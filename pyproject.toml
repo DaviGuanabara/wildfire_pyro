@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "wildfire"
+version = "0.1.0"
+description = ""
+authors = ["DaviGuanabara <davi_guanabara@live.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+torch = "^2.5.0"
+matplotlib = "^3.9.2"
+pandas = "^2.2.3"
+scikit-learn = "^1.5.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
