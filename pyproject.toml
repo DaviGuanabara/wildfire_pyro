@@ -5,6 +5,11 @@ description = ""
 authors = ["DaviGuanabara <davi_guanabara@live.com>"]
 readme = "README.md"
 
+packages = [
+    { include = "wildfire_private" }
+]
+
+
 [tool.poetry.dependencies]
 python = "^3.12"
 torch = "^2.5.0"
