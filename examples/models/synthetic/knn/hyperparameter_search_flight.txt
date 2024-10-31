@@ -1,0 +1,159 @@
+=> Fixing:
+
+n_samples = 90
+prob = 0.4 #0.3
+#n_neighbors = 210
+normalize_by = 2*np.pi
+
+n neighbors 3
+MSE: 0.13866601669387257
+n neighbors 5
+MSE: 0.1381819729836525
+n neighbors 7
+MSE: 0.13904899345691601
+n neighbors 9
+MSE: 0.14151135855612718
+n neighbors 11
+MSE: 0.14523859544438736
+n neighbors 13
+MSE: 0.1485390096782809
+n neighbors 15
+MSE: 0.15294129329183634
+n neighbors 17
+MSE: 0.15638462552177612
+n neighbors 19
+MSE: 0.1599086496064865
+n neighbors 21
+MSE: 0.16460347665431105
+n neighbors 23
+MSE: 0.17017811379766723
+n neighbors 25
+MSE: 0.1732286853735596
+n neighbors 27
+MSE: 0.1775504243636601
+n neighbors 29
+MSE: 0.18158414125274455
+n neighbors 31
+MSE: 0.18541487678851185
+n neighbors 33
+MSE: 0.18855950829111678
+n neighbors 35
+MSE: 0.19383487681605355
+n neighbors 37
+MSE: 0.1967790178046123
+n neighbors 39
+MSE: 0.19898224407795023
+
+=> Fixing:
+n_samples = 90
+prob = 0.4 #0.3
+n_neighbors = 3
+
+normalizing factor:
+1.0
+MSE: 0.07087096401827728
+
+normalizing factor:
+1.5870205896866207
+MSE: 0.06531056981784009
+
+normalizing factor:
+2.1740411793732415
+MSE: 0.06756260219665612 <= best
+
+normalizing factor:
+2.7610617690598622
+MSE: 0.07448498619653089
+
+normalizing factor:
+3.348082358746483
+MSE: 0.08475349020096075
+
+normalizing factor:
+3.9351029484331037
+MSE: 0.09582929634824451
+
+normalizing factor:
+4.5221235381197245
+MSE: 0.10668825349090696
+
+normalizing factor:
+5.109144127806346
+MSE: 0.11743056735818737
+
+normalizing factor:
+5.696164717492966
+MSE: 0.1280296242333798
+
+normalizing factor:
+6.283185307179586
+MSE: 0.1384052898744057
+
+=> Fixing:
+
+n_samples = 90
+n_neighbors = 3
+normalize_by = 2.174
+
+prob: 0.1
+MSE: 0.07297841341744146
+
+prob: 0.2
+MSE: 0.0687548697500717
+
+prob: 0.30000000000000004
+MSE: 0.0675408122197737
+
+prob: 0.4
+MSE: 0.06747174257252592
+
+prob: 0.5
+MSE: 0.06760845431370636
+
+prob: 0.6
+MSE: 0.06777424937695486
+
+prob: 0.7000000000000001
+MSE: 0.06792363572286847
+
+prob: 0.8
+MSE: 0.06806330448325569
+
+prob: 0.9
+MSE: 0.06825977633248011
+
+Doesn't change much the result, the model is probably just choosing the few most recent examples
+picked at each iteration. Keep prob = 0.4 (same as before)
+
+Remaking the search for best neighbors, with other hyperparameters updated:
+
+n_samples = 90
+prob = 0.4 
+#n_neighbors = 3
+normalize_by = 2.174
+
+n neighbors 3
+MSE: 0.06742869542564191
+n neighbors 5
+MSE: 0.06790316522598801
+n neighbors 7
+MSE: 0.06854872682822255
+n neighbors 9
+MSE: 0.06907484918421881
+n neighbors 11
+MSE: 0.0702056809449491
+n neighbors 13
+MSE: 0.07123602560867465
+n neighbors 15
+MSE: 0.07282540539417903
+n neighbors 17
+MSE: 0.07446431700797354
+
+Same result as before, n=3 is best
+
+FINAL HYPERPARAMETERS:
+
+prob = 0.4
+n_neighbors = 3
+normalize_by = 2.174
+

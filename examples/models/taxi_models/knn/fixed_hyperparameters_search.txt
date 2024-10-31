@@ -1,0 +1,97 @@
+SELECTING FOR THE NUMBER OF DAYS IN THE PREDICTION HISTORY
+
+prob = 0.9
+n_neighbors = 3
+past_days_in_prediction = 48
+
+days history in prediction: 48 <--- selected
+  RMSE: 67.23578921648732
+days history in prediction: 96
+RMSE: 82.19616502691368
+days history in prediction: 144
+RMSE: 80.17626819544243
+days history in prediction: 192
+RMSE: 81.71516185649192
+days history in prediction: 240
+RMSE: 87.61511466380678
+days history in prediction: 288
+RMSE: 88.23124975644765
+days history in prediction: 336
+RMSE: 91.87350190202322
+days history in prediction: 384
+RMSE: 90.10571590910646
+days history in prediction: 432
+RMSE: 95.36406841147878
+days history in prediction: 480
+RMSE: 100.37923319315641
+days history in prediction: 528
+RMSE: 101.7236929255719
+days history in prediction: 576
+RMSE: 93.68633772020505
+days history in prediction: 624
+RMSE: 89.36782038640337
+days history in prediction: 672
+RMSE: 99.58026908204081
+
+SELECTING FOR THE NUMBER OF NEIGHBORS
+
+for n_neighbors in range(3, 20, 1):
+
+n neighbors 3
+RMSE: 67.25174514853344
+n neighbors 4
+RMSE: 66.46890400651026
+n neighbors 5
+RMSE: 65.61419033431274
+n neighbors 6
+RMSE: 65.45488942110127
+n neighbors 7
+RMSE: 65.17367703616836
+n neighbors 8
+RMSE: 64.819849181834
+n neighbors 9
+RMSE: 64.93717508731194
+n neighbors 10
+RMSE: 64.82820236946371
+n neighbors 11
+RMSE: 64.79686583180711 <------- selected
+n neighbors 12
+RMSE: 64.84588810382006
+n neighbors 13
+RMSE: 64.88450655291457
+n neighbors 14
+RMSE: 64.88050999336744
+n neighbors 15
+RMSE: 64.92294412094425
+n neighbors 16
+RMSE: 65.18304192518039
+n neighbors 17
+RMSE: 65.22114560679623
+n neighbors 18
+RMSE: 65.45850116783261
+n neighbors 19
+RMSE: 65.52057168585975
+
+SELECTING FOR THE PROBABILITY OF THE BOOTSTRAP
+
+n_neighbors = 11
+past_days_in_prediction = 48
+
+prob: 0.1
+RMSE: 75.90877842604904
+prob: 0.2
+RMSE: 70.62169399616663
+prob: 0.30000000000000004
+RMSE: 68.02321545280718
+prob: 0.4
+RMSE: 66.77549021835657
+prob: 0.5
+RMSE: 65.73179861099428
+prob: 0.6
+RMSE: 65.26432082083028
+prob: 0.7000000000000001
+RMSE: 64.8991673380078
+prob: 0.8
+RMSE: 64.91571294239203
+prob: 0.9
+RMSE: 64.79417027974685 <----- SELECTED

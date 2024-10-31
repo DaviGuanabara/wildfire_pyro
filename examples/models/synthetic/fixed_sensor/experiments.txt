@@ -1,0 +1,1238 @@
+Experiment 1
+
+n parameters: 39457
+[INFO] epoch: 99/3000, training loss: 0.06870957463979721, validation loss: 0.16653572022914886
+[INFO] saving model checkpoint
+[INFO] epoch: 199/3000, training loss: 0.05133390799164772, validation loss: 0.1523948758840561
+[INFO] saving model checkpoint
+[INFO] epoch: 299/3000, training loss: 0.042561113834381104, validation loss: 0.14083538949489594
+[INFO] saving model checkpoint
+[INFO] epoch: 399/3000, training loss: 0.03768517076969147, validation loss: 0.13202746212482452
+[INFO] saving model checkpoint
+[INFO] epoch: 499/3000, training loss: 0.03827039152383804, validation loss: 0.12289166450500488
+[INFO] saving model checkpoint
+[INFO] epoch: 599/3000, training loss: 0.033034637570381165, validation loss: 0.11685096472501755
+[INFO] saving model checkpoint
+[INFO] epoch: 699/3000, training loss: 0.03312476724386215, validation loss: 0.1113658994436264
+[INFO] saving model checkpoint
+[INFO] epoch: 799/3000, training loss: 0.03032235987484455, validation loss: 0.10384847223758698
+....
+[INFO] epoch: 2599/3000, training loss: 0.019868142902851105, validation loss: 0.07944980263710022
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.01951569691300392, validation loss: 0.08167559653520584
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.019435590133070946, validation loss: 0.07858443260192871
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.019586147740483284, validation loss: 0.08005208522081375
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.017187029123306274, validation loss: 0.08296200633049011
+[INFO] saving model checkpoint
+
+High degree of overfitting in the training data
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.01,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.5,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_1.pt",
+    "best_model": "saved_models/best_model_1.pt",
+    "plot": "plots/training_1.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+class SpatialRegressor3(nn.Module):
+    def __init__(self, hidden=32, features=4, prob=0.5):
+        super(SpatialRegressor3, self).__init__()
+
+        self.features = features
+        self.hidden = hidden
+
+        self.linear1_before_aggr = nn.Linear(self.features, hidden)
+        self.bn1 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_before_aggr = nn.Tanh() #nn.ReLU()
+
+        self.linear2_before_aggr = nn.Linear(hidden, hidden)
+        self.bn2 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_before_aggr = nn.Tanh()
+
+        ##############
+
+        self.linear1_attn = nn.Linear(self.features, hidden)
+        self.bn1_attn = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_attn = nn.Tanh() #nn.ReLU()
+
+        self.linear2_attn = nn.Linear(hidden, hidden)
+        self.bn2_attn = nn.BatchNorm1d(num_features=hidden)
+
+        self.softmax = nn.Softmax(dim=1) # softmax in the neighbors dim
+        ################
+
+        #self.dropout1 = nn.Dropout(p=prob)
+        self.linear1_after_aggr = nn.Linear(hidden, hidden)
+        self.bn3 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_after_aggr = nn.Tanh() #nn.ReLU()
+
+        self.linear2_after_aggr = nn.Linear(hidden, hidden)
+        self.bn4 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_after_aggr = nn.Tanh()
+
+        #self.dropout2 = nn.Dropout(p=prob)
+        self.linear2_regression = nn.Linear(hidden, 1)
+
+    def forward(self, u, mask):
+        # u: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # mask: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # ------- pass the input features from the set of neighbots in the MLP-theta,
+        # responsible for calculating the attention weights
+
+        batch_size = u.shape[0]
+
+        # (batch * neighbors, features)
+        input = u.view(-1, self.features)
+        
+        # (batch * neighbors, hidden)
+        x_main = self.linear1_before_aggr(input)
+        x_main = self.bn1(x_main)
+        self.act1_main = self.activation1_before_aggr(x_main)
+
+        x_main = self.linear2_before_aggr(self.act1_main)
+        x_main = self.bn2(x_main)
+        self.act2_main = self.activation2_before_aggr(x_main)
+
+        # (batch, neighbors, hidden)
+        x_main = self.act2_main.view(batch_size, -1, self.hidden)
+   
+        # attention leg
+
+        # (batch * neighbors, features)
+        x_attn = self.linear1_attn(input)
+        x_attn = self.bn1_attn(x_attn)
+        self.act1_attn = self.activation1_attn(x_attn) #nn.ReLU()
+
+        # (batch * neighbors, hidden)
+        x_attn = self.linear2_attn(self.act1_attn)
+        x_attn = self.bn2_attn(x_attn)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.view(batch_size, -1, self.hidden)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.masked_fill(mask==0, -float("inf"))
+
+        # (batch, neighbors, features)
+        x_attn = self.softmax(x_attn) # softmax in the neighbors dim
+
+        x = x_main * x_attn # element wise multiplication by the weights
+
+        # (batch, features)
+        x = x.sum(dim=1)
+
+        # ------- pass the aggregated node vetor in the MLP-phi, which is responsible for the regression
+        #x = self.dropout1(x)
+
+        # (batch, features)
+        x = self.linear1_after_aggr(x)
+        x = self.bn3(x)
+        self.act3 = self.activation1_after_aggr(x)
+
+        x = self.linear2_after_aggr(self.act3)
+        x = self.bn4(x)
+        self.act4 = self.activation2_after_aggr(x)
+
+        #x = self.dropout2(x)
+        x = self.linear2_regression(self.act4)
+
+        return x
+
+Experiment 2 (model 2 was not saved):
+
+Same model as experiment 1, adding weight decay to the loss function.
+
+We can see a improvement in the validation loss, without any counter-effect in the training loss.
+
+Previous model:
+[INFO] epoch: 2599/3000, training loss: 0.019868142902851105, validation loss: 0.07944980263710022
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.01951569691300392, validation loss: 0.08167559653520584
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.019435590133070946, validation loss: 0.07858443260192871
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.019586147740483284, validation loss: 0.08005208522081375
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.017187029123306274, validation loss: 0.08296200633049011
+[INFO] saving model checkpoint
+
+Current model:
+[INFO] epoch: 99/3000, training loss: 0.06848012655973434, validation loss: 0.12500299513339996
+...
+[INFO] saving model checkpoint
+[INFO] saving model checkpoint
+[INFO] epoch: 2599/3000, training loss: 0.020837804302573204, validation loss: 0.07231774181127548
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.019970498979091644, validation loss: 0.07126705348491669
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.017375435680150986, validation loss: 0.07051949203014374
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.017450733110308647, validation loss: 0.0717410147190094
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.017025362700223923, validation loss: 0.07251186668872833
+[INFO] saving model checkpoint
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.01,
+    "weight_decay": 1e-5,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.2,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_2.pt",
+    "best_model": "saved_models/best_model_2.pt",
+    "plot": "plots/training_2.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+optimizer = optim.SGD(model.parameters(), lr=parameters["learning_rate"], weight_decay=parameters["weight_decay"])
+
+
+
+Experiment 3:
+
+Removing weight decay and adding dropout of 0.2
+
+Losses start at a much higher point:
+
+[INFO] epoch: 99/3000, training loss: 0.22180628776550293, validation loss: 0.1826080083847046
+[INFO] saving model checkpoint
+[INFO] epoch: 199/3000, training loss: 0.1960066705942154, validation loss: 0.1703435480594635
+[INFO] saving model checkpoint
+
+In the experiment 2 with weight decay and no dropout:
+
+[INFO] epoch: 99/3000, training loss: 0.06848012655973434, validation loss: 0.12500299513339996
+
+Optimization was much slower in this experiment, and we could not reach good loss values. But the losses were
+still decreasing, sign that we could have trained further:
+
+[INFO] epoch: 2699/3000, training loss: 0.0874689444899559, validation loss: 0.10007951408624649
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.08340118825435638, validation loss: 0.10426951944828033
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.08381032198667526, validation loss: 0.10074491798877716
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.08030877262353897, validation loss: 0.09987747669219971
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.01,
+    "weight_decay": 1e-5,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.2,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_2.pt",
+    "best_model": "saved_models/best_model_2.pt",
+    "plot": "plots/training_2.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+optimizer = optim.SGD(model.parameters(), lr=parameters["learning_rate"]) #, weight_decay=parameters["weight_decay"])
+
+class SpatialRegressor3(nn.Module):
+    def __init__(self, hidden=32, features=4, prob=0.5):
+        super(SpatialRegressor3, self).__init__()
+
+        self.features = features
+        self.hidden = hidden
+
+        self.linear1_before_aggr = nn.Linear(self.features, hidden)
+        self.bn1 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_before_aggr = nn.Tanh() #nn.ReLU()
+        self.dropout1_aggr = nn.Dropout(p=prob)
+
+        self.linear2_before_aggr = nn.Linear(hidden, hidden)
+        self.bn2 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_before_aggr = nn.Tanh()
+
+        ##############
+
+        self.linear1_attn = nn.Linear(self.features, hidden)
+        self.bn1_attn = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_attn = nn.Tanh() #nn.ReLU()
+        self.dropout1_attn = nn.Dropout(p=prob)
+
+        self.linear2_attn = nn.Linear(hidden, hidden)
+        self.bn2_attn = nn.BatchNorm1d(num_features=hidden)
+
+        self.softmax = nn.Softmax(dim=1) # softmax in the neighbors dim
+        ################
+
+        self.dropout1 = nn.Dropout(p=prob)
+        self.linear1_after_aggr = nn.Linear(hidden, hidden)
+        self.bn3 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_after_aggr = nn.Tanh() #nn.ReLU()
+
+        self.dropout2 = nn.Dropout(p=prob)
+        self.linear2_after_aggr = nn.Linear(hidden, hidden)
+        self.bn4 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_after_aggr = nn.Tanh()
+
+        self.dropout3 = nn.Dropout(p=prob)
+        self.linear2_regression = nn.Linear(hidden, 1)
+
+    def forward(self, u, mask):
+        # u: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # mask: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # ------- pass the input features from the set of neighbots in the MLP-theta,
+        # responsible for calculating the attention weights
+
+        batch_size = u.shape[0]
+
+        # (batch * neighbors, features)
+        input = u.view(-1, self.features)
+        
+        # (batch * neighbors, hidden)
+        x_main = self.linear1_before_aggr(input)
+        x_main = self.bn1(x_main)
+        self.act1_main = self.activation1_before_aggr(x_main)
+        x_main = self.dropout1_aggr(self.act1_main)
+
+
+        x_main = self.linear2_before_aggr(x_main)
+        x_main = self.bn2(x_main)
+        self.act2_main = self.activation2_before_aggr(x_main)
+
+        # (batch, neighbors, hidden)
+        x_main = self.act2_main.view(batch_size, -1, self.hidden)
+   
+        # attention leg
+
+        # (batch * neighbors, features)
+        x_attn = self.linear1_attn(input)
+        x_attn = self.bn1_attn(x_attn)
+        self.act1_attn = self.activation1_attn(x_attn) #nn.ReLU()
+        x_attn = self.dropout1_attn(self.act1_attn)
+
+        # (batch * neighbors, hidden)
+        x_attn = self.linear2_attn(x_attn)
+        x_attn = self.bn2_attn(x_attn)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.view(batch_size, -1, self.hidden)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.masked_fill(mask==0, -float("inf"))
+
+        # (batch, neighbors, features)
+        x_attn = self.softmax(x_attn) # softmax in the neighbors dim
+
+        x = x_main * x_attn # element wise multiplication by the weights
+
+        # (batch, features)
+        x = x.sum(dim=1)
+
+        # ------- pass the aggregated node vetor in the MLP-phi, which is responsible for the regression
+        #x = self.dropout1(x)
+
+        # (batch, features)
+        x = self.dropout1(x)
+        x = self.linear1_after_aggr(x)
+        x = self.bn3(x)
+        self.act3 = self.activation1_after_aggr(x)
+
+        x = self.dropout2(self.act3)
+        x = self.linear2_after_aggr(x)
+        x = self.bn4(x)
+        self.act4 = self.activation2_after_aggr(x)
+
+        x = self.dropout3(self.act4)
+        x = self.linear2_regression(x)
+
+        return x
+
+Experiment 4
+
+Training with dropout=0.2 progressed very slowly, and we could not reach good loss values after 3000 epochs.
+
+Using the exact same setting but adding moment to see if we could speed up convergence.
+
+During a quick experiments we observed that we are able to increase the learning rate from 0.01 to 0.1 when working with momentum.
+
+Training started at a much faster rate:
+
+[INFO] epoch: 99/3000, training loss: 0.05794274061918259, validation loss: 0.08462174236774445
+[INFO] saving model checkpoint
+[INFO] epoch: 199/3000, training loss: 0.04666997119784355, validation loss: 0.07543996721506119
+...
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.027359891682863235, validation loss: 0.044237568974494934
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.02605307847261429, validation loss: 0.04348000884056091
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.02366265095770359, validation loss: 0.045089241117239
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.026075299829244614, validation loss: 0.047020189464092255
+
+Comparing with experiment 2 (SGD with weight decay):
+
+[INFO] epoch: 2999/3000, training loss: 0.017025362700223923, validation loss: 0.07251186668872833
+[INFO] saving model checkpoint
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.1,
+    "weight_decay": 1e-5,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.2,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_4.pt",
+    "best_model": "saved_models/best_model_4.pt",
+    "plot": "plots/training_4.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+optimizer = optim.SGD(model.parameters(), lr=parameters["learning_rate"], momentum=parameters["momentum"]) #, weight_decay=parameters["weight_decay"])
+
+Experiment 5
+
+Adding weight decay of 1e-5 together with dropout of 0.2:
+
+It didn't make much of a difference. But we will keep the weight decay anyway once it did not harm as well.
+
+[INFO] epoch: 2599/3000, training loss: 0.026206674054265022, validation loss: 0.04545532912015915
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.024040691554546356, validation loss: 0.04274536296725273
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.02694011852145195, validation loss: 0.04483925178647041
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.024955742061138153, validation loss: 0.04127361997961998
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.027174316346645355, validation loss: 0.04696133360266685
+
+Comparing with experiment 4 (no weight decay):
+
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.027359891682863235, validation loss: 0.044237568974494934
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.02605307847261429, validation loss: 0.04348000884056091
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.02366265095770359, validation loss: 0.045089241117239
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.026075299829244614, validation loss: 0.047020189464092255
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.1,
+    "weight_decay": 1e-5,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.2,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_4.pt",
+    "best_model": "saved_models/best_model_4.pt",
+    "plot": "plots/training_4.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+optimizer = optim.SGD(model.parameters(), 
+                      lr=parameters["learning_rate"], 
+                      momentum=parameters["momentum"], 
+                      weight_decay=parameters["weight_decay"])
+
+Experiment 6:
+
+Changing the optimizer to Adam:
+
+Also, increased weight decay to 1e-4. Looking at the activations, with a smaller value of weight decay the last
+activation was acting very much as a linear layer, with no values saturated and the histogram very picked around 0.
+
+Increasing weight decay made it look a bit nicer with at least a little bit of saturation.
+
+Training was much faster, and after 1000 iterations the losses were stagnant already.
+
+[INFO] epoch: 899/3000, training loss: 0.02667400613427162, validation loss: 0.04130617901682854
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.029879512265324593, validation loss: 0.036231473088264465
+[INFO] saving model checkpoint
+[INFO] epoch: 1099/3000, training loss: 0.042536988854408264, validation loss: 0.04314336180686951
+[INFO] saving model checkpoint
+[INFO] epoch: 1199/3000, training loss: 0.03016716055572033, validation loss: 0.04872462898492813
+
+optimizer = optim.Adam(model.parameters(), lr=parameters["learning_rate"], weight_decay=parameters["weight_decay"])
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.1,
+    "weight_decay": 1e-4,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.2,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_6.pt",
+    "best_model": "saved_models/best_model_6.pt",
+    "plot": "plots/training_6.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+Experiment 7:
+
+Doubling the number of hidden units to see if now that the network is training faster it can learn more
+if given more capacity.
+
+Training stagnated alreeady on epoch 200-300 and it was not possible to get further gains.
+
+[INFO] epoch: 199/3000, training loss: 0.040614087134599686, validation loss: 0.044438280165195465
+[INFO] saving model checkpoint
+[INFO] epoch: 299/3000, training loss: 0.037043601274490356, validation loss: 0.04787382110953331
+[INFO] saving model checkpoint
+[INFO] epoch: 399/3000, training loss: 0.027030259370803833, validation loss: 0.0492144450545311
+[INFO] saving model checkpoint
+[INFO] epoch: 499/3000, training loss: 0.02954203076660633, validation loss: 0.05025278404355049
+[INFO] saving model checkpoint
+[INFO] epoch: 599/3000, training loss: 0.023693569004535675, validation loss: 0.052840087562799454
+[INFO] saving model checkpoint
+[INFO] epoch: 699/3000, training loss: 0.026545308530330658, validation loss: 0.05467743054032326
+[INFO] saving model checkpoint
+[INFO] epoch: 799/3000, training loss: 0.024962494149804115, validation loss: 0.04595191404223442
+[INFO] saving model checkpoint
+[INFO] epoch: 899/3000, training loss: 0.027017969638109207, validation loss: 0.04507824033498764
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.025997182354331017, validation loss: 0.05098550021648407
+[INFO] saving model checkpoint
+[INFO] epoch: 1099/3000, training loss: 0.025223858654499054, validation loss: 0.04656839370727539
+
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.1,
+    "weight_decay": 1e-4,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96*2,
+    "dropout": 0.2,
+    "num_epochs": 3000,
+    "device": "cpu",
+    "last_model": "saved_models/model_7.pt",
+    "best_model": "saved_models/best_model_7.pt",
+    "plot": "plots/training_7.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+Experiment 7.2
+
+Training with 8x more hidden parameters:
+
+    "hidden_size": 96*8,
+
+[INFO] saving model checkpoint
+[INFO] epoch: 1299/3000, training loss: 0.024269085377454758, validation loss: 0.04281356558203697
+
+This was the best loss achieved, but training did not improved much after epoch 1000, even in the training set. Later it was:
+
+[INFO] epoch: 1999/3000, training loss: 0.023798927664756775, validation loss: 0.06702662259340286
+[INFO] saving model checkpoint
+[INFO] epoch: 2099/3000, training loss: 0.02976909652352333, validation loss: 0.045491643249988556
+[INFO] saving model checkpoint
+
+
+Experiment 8
+
+Going back to the same number of hidden units, but increasing the number of layers:
+1 layer more before the agregation, in the attention leg, and after the aggregation
+
+[INFO] saving model checkpoint
+[INFO] epoch: 2699/3000, training loss: 0.027208572253584862, validation loss: 0.1039251759648323
+[INFO] saving model checkpoint
+[INFO] epoch: 2799/3000, training loss: 0.025534095242619514, validation loss: 0.03921159356832504
+[INFO] saving model checkpoint
+[INFO] epoch: 2899/3000, training loss: 0.03807080537080765, validation loss: 0.08224428445100784
+[INFO] saving model checkpoint
+[INFO] epoch: 2999/3000, training loss: 0.027530459687113762, validation loss: 0.09501883387565613
+
+Training got much more unstable in this setting, with no gain in the validation loss and little to no gain in the training loss.
+
+Comparing with experiment 6:
+
+[INFO] epoch: 899/3000, training loss: 0.02667400613427162, validation loss: 0.04130617901682854
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.029879512265324593, validation loss: 0.036231473088264465
+[INFO] saving model checkpoint
+[INFO] epoch: 1099/3000, training loss: 0.042536988854408264, validation loss: 0.04314336180686951
+[INFO] saving model checkpoint
+[INFO] epoch: 1199/3000, training loss: 0.03016716055572033, validation loss: 0.04872462898492813
+
+class SpatialRegressor3(nn.Module):
+    def __init__(self, hidden=32, features=4, prob=0.5):
+        super(SpatialRegressor3, self).__init__()
+
+        self.features = features
+        self.hidden = hidden
+
+        self.linear1_before_aggr = nn.Linear(self.features, hidden, bias=False)
+        self.bn1 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_before_aggr = nn.Tanh() #nn.ReLU()
+        self.dropout1_aggr = nn.Dropout(p=prob)
+
+        self.linear12_before_aggr = nn.Linear(self.features, hidden, bias=False)
+        self.bn12 = nn.BatchNorm1d(num_features=hidden)
+        self.activation12_before_aggr = nn.Tanh() #nn.ReLU()
+        self.dropout12_aggr = nn.Dropout(p=prob)
+
+        self.linear2_before_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn2 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_before_aggr = nn.Tanh()
+
+        ##############
+
+        self.linear1_attn = nn.Linear(self.features, hidden, bias=False)
+        self.bn1_attn = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_attn = nn.Tanh() #nn.ReLU()
+        self.dropout1_attn = nn.Dropout(p=prob)
+
+        self.linear12_attn = nn.Linear(self.features, hidden, bias=False)
+        self.bn12_attn = nn.BatchNorm1d(num_features=hidden)
+        self.activation12_attn = nn.Tanh() #nn.ReLU()
+        self.dropout12_attn = nn.Dropout(p=prob)
+
+        self.linear2_attn = nn.Linear(hidden, hidden, bias=False)
+        self.bn2_attn = nn.BatchNorm1d(num_features=hidden)
+
+        self.softmax = nn.Softmax(dim=1) # softmax in the neighbors dim
+        ################
+
+        self.dropout1 = nn.Dropout(p=prob)
+        self.linear1_after_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn3 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_after_aggr = nn.Tanh() #nn.ReLU()
+
+        self.dropout12 = nn.Dropout(p=prob)
+        self.linear12_after_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn12 = nn.BatchNorm1d(num_features=hidden)
+        self.activation12_after_aggr = nn.Tanh() #nn.ReLU()
+
+        self.dropout2 = nn.Dropout(p=prob)
+        self.linear2_after_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn4 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_after_aggr = nn.Tanh()
+
+        self.dropout3 = nn.Dropout(p=prob)
+        self.linear2_regression = nn.Linear(hidden, 1)
+
+    def forward(self, u, mask):
+        # u: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # mask: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # ------- pass the input features from the set of neighbots in the MLP-theta,
+        # responsible for calculating the attention weights
+
+        batch_size = u.shape[0]
+
+        # (batch * neighbors, features)
+        input = u.view(-1, self.features)
+        
+        # (batch * neighbors, hidden)
+        x_main = self.linear1_before_aggr(input)
+        x_main = self.bn1(x_main)
+        self.act1_main = self.activation1_before_aggr(x_main)
+        x_main = self.dropout1_aggr(self.act1_main)
+
+        x_main = self.linear12_before_aggr(x_main)
+        x_main = self.bn12(x_main)
+        x_main = self.activation12_before_aggr(x_main)
+        x_main = self.dropout12_aggr(x_main)
+
+
+        x_main = self.linear2_before_aggr(x_main)
+        x_main = self.bn2(x_main)
+        self.act2_main = self.activation2_before_aggr(x_main)
+
+        # (batch, neighbors, hidden)
+        x_main = self.act2_main.view(batch_size, -1, self.hidden)
+   
+        # attention leg
+
+        # (batch * neighbors, features)
+        x_attn = self.linear1_attn(input)
+        x_attn = self.bn1_attn(x_attn)
+        self.act1_attn = self.activation1_attn(x_attn) #nn.ReLU()
+        x_attn = self.dropout1_attn(self.act1_attn)
+
+        x_attn = self.linear12_attn(x_attn)
+        x_attn = self.bn12_attn(x_attn)
+        x_attn = self.activation12_attn(x_attn) #nn.ReLU()
+        x_attn = self.dropout12_attn(x_attn)
+
+        # (batch * neighbors, hidden)
+        x_attn = self.linear2_attn(x_attn)
+        x_attn = self.bn2_attn(x_attn)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.view(batch_size, -1, self.hidden)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.masked_fill(mask==0, -float("inf"))
+
+        # (batch, neighbors, features)
+        x_attn = self.softmax(x_attn) # softmax in the neighbors dim
+
+        x = x_main * x_attn # element wise multiplication by the weights
+
+        # (batch, features)
+        x = x.sum(dim=1)
+
+        # ------- pass the aggregated node vetor in the MLP-phi, which is responsible for the regression
+        #x = self.dropout1(x)
+
+        # (batch, features)
+        x = self.dropout1(x)
+        x = self.linear1_after_aggr(x)
+        x = self.bn3(x)
+        self.act3 = self.activation1_after_aggr(x)
+
+        x = self.dropout12(self.act3)
+        x = self.linear12_after_aggr(x)
+        x = self.bn12(x)
+        x = self.activation12_after_aggr(x)
+
+        x = self.dropout2(x)
+        x = self.linear2_after_aggr(x)
+        x = self.bn4(x)
+        self.act4 = self.activation2_after_aggr(x)
+
+        x = self.dropout3(self.act4)
+        x = self.linear2_regression(x)
+
+        return x
+
+
+Experiment 9
+
+The same network with more layers as in experiment 8, but now with skip connections
+
+Training is much more stable than the same network without the skip connections.
+
+Started overfitting after epoch 500:
+
+[INFO] epoch: 499/3000, training loss: 0.029670950025320053, validation loss: 0.06281336396932602
+[INFO] saving model checkpoint
+[INFO] epoch: 599/3000, training loss: 0.025929344817996025, validation loss: 0.0942874550819397
+[INFO] saving model checkpoint
+[INFO] epoch: 699/3000, training loss: 0.032607343047857285, validation loss: 0.06956943869590759
+[INFO] saving model checkpoint
+[INFO] epoch: 799/3000, training loss: 0.024296356365084648, validation loss: 0.1011008620262146
+[INFO] saving model checkpoint
+[INFO] epoch: 899/3000, training loss: 0.024936268106102943, validation loss: 0.09007290005683899
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.02176634594798088, validation loss: 0.10256227850914001
+
+increasing the dropout prob to 0.5 training got better results:
+
+Training seems very stable and with not much overfitting.
+
+[INFO] epoch: 799/3000, training loss: 0.03621774539351463, validation loss: 0.040313661098480225
+[INFO] saving model checkpoint
+[INFO] epoch: 899/3000, training loss: 0.034891340881586075, validation loss: 0.037273041903972626
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.03799915686249733, validation loss: 0.03960180655121803
+...
+
+Validation loss started to increase after epoch 1100:
+
+[INFO] epoch: 1099/3000, training loss: 0.0358760729432106, validation loss: 0.040264662355184555
+[INFO] saving model checkpoint
+[INFO] epoch: 1199/3000, training loss: 0.035903818905353546, validation loss: 0.06398905813694
+[INFO] saving model checkpoint
+[INFO] epoch: 1299/3000, training loss: 0.03689425438642502, validation loss: 0.05277380347251892
+
+Comparing with experiment 6:
+
+[INFO] epoch: 899/3000, training loss: 0.02667400613427162, validation loss: 0.04130617901682854
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.029879512265324593, validation loss: 0.036231473088264465
+[INFO] saving model checkpoint
+[INFO] epoch: 1099/3000, training loss: 0.042536988854408264, validation loss: 0.04314336180686951
+[INFO] saving model checkpoint
+[INFO] epoch: 1199/3000, training loss: 0.03016716055572033, validation loss: 0.04872462898492813
+
+class SpatialRegressor3(nn.Module):
+    def __init__(self, hidden=32, features=4, prob=0.5):
+        super(SpatialRegressor3, self).__init__()
+
+        self.features = features
+        self.hidden = hidden
+
+        self.linear1_before_aggr = nn.Linear(self.features, hidden, bias=False)
+        self.bn1 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_before_aggr = nn.Tanh() #nn.ReLU()
+        self.dropout1_aggr = nn.Dropout(p=prob)
+
+        self.linear12_before_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn12 = nn.BatchNorm1d(num_features=hidden)
+        self.activation12_before_aggr = nn.Tanh() #nn.ReLU()
+        self.dropout12_aggr = nn.Dropout(p=prob)
+
+        self.linear2_before_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn2 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_before_aggr = nn.Tanh()
+
+        ##############
+
+        self.linear1_attn = nn.Linear(self.features, hidden, bias=False)
+        self.bn1_attn = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_attn = nn.Tanh() #nn.ReLU()
+        self.dropout1_attn = nn.Dropout(p=prob)
+
+        self.linear12_attn = nn.Linear(hidden, hidden, bias=False)
+        self.bn12_attn = nn.BatchNorm1d(num_features=hidden)
+        self.activation12_attn = nn.Tanh() #nn.ReLU()
+        self.dropout12_attn = nn.Dropout(p=prob)
+
+        self.linear2_attn = nn.Linear(hidden, hidden, bias=False)
+        self.bn2_attn = nn.BatchNorm1d(num_features=hidden)
+
+        self.softmax = nn.Softmax(dim=1) # softmax in the neighbors dim
+        ################
+
+        self.dropout1 = nn.Dropout(p=prob)
+        self.linear1_after_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn3 = nn.BatchNorm1d(num_features=hidden)
+        self.activation1_after_aggr = nn.Tanh() #nn.ReLU()
+
+        self.dropout12 = nn.Dropout(p=prob)
+        self.linear12_after_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn12 = nn.BatchNorm1d(num_features=hidden)
+        self.activation12_after_aggr = nn.Tanh() #nn.ReLU()
+
+        self.dropout2 = nn.Dropout(p=prob)
+        self.linear2_after_aggr = nn.Linear(hidden, hidden, bias=False)
+        self.bn4 = nn.BatchNorm1d(num_features=hidden)
+        self.activation2_after_aggr = nn.Tanh()
+
+        self.dropout3 = nn.Dropout(p=prob)
+        self.linear2_regression = nn.Linear(hidden, 1)
+
+    def forward(self, u, mask):
+        # u: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # mask: (batch, neighbors, features)
+        # example: (2, 3, 4)
+
+        # ------- pass the input features from the set of neighbots in the MLP-theta,
+        # responsible for calculating the attention weights
+
+        batch_size = u.shape[0]
+
+        # (batch * neighbors, features)
+        input = u.view(-1, self.features)
+        
+        # (batch * neighbors, hidden)
+        x_main = self.linear1_before_aggr(input)
+        x_main = self.bn1(x_main)
+        x_main = self.activation1_before_aggr(x_main)
+        x_main = self.dropout1_aggr(x_main)
+
+        x_main_1= self.linear12_before_aggr(x_main)
+        x_main_1 = self.bn12(x_main_1)
+        x_main_1 = self.activation12_before_aggr(x_main_1)
+
+        x_main = x_main + x_main_1
+        x_main = self.dropout12_aggr(x_main)
+
+        x_main_2 = self.linear2_before_aggr(x_main)
+        x_main_2 = self.bn2(x_main_2)
+        x_main_2 = self.activation2_before_aggr(x_main_2)
+
+        x_main = x_main + x_main_2
+
+        # (batch, neighbors, hidden)
+        x_main = x_main.view(batch_size, -1, self.hidden)
+   
+        # attention leg
+
+        # (batch * neighbors, features)
+        x_attn = self.linear1_attn(input)
+        x_attn = self.bn1_attn(x_attn)
+        x_attn = self.activation1_attn(x_attn) #nn.ReLU()
+        x_attn = self.dropout1_attn(x_attn)
+
+        x_attn_1 = self.linear12_attn(x_attn)
+        x_attn_1 = self.bn12_attn(x_attn_1)
+        x_attn_1 = self.activation12_attn(x_attn_1) #nn.ReLU()
+
+        x_attn = x_attn + x_attn_1
+        x_attn = self.dropout12_attn(x_attn)
+
+        # (batch * neighbors, hidden)
+        x_attn = self.linear2_attn(x_attn)
+        x_attn = self.bn2_attn(x_attn)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.view(batch_size, -1, self.hidden)
+
+        # (batch, neighbors, hidden)
+        x_attn = x_attn.masked_fill(mask==0, -float("inf"))
+
+        # (batch, neighbors, features)
+        x_attn = self.softmax(x_attn) # softmax in the neighbors dim
+
+        x = x_main * x_attn # element wise multiplication by the weights
+
+        # (batch, features)
+        x = x.sum(dim=1)
+
+        # ------- pass the aggregated node vetor in the MLP-phi, which is responsible for the regression
+        #x = self.dropout1(x)
+
+        # (batch, features)
+        x0 = self.dropout1(x)
+        x0 = self.linear1_after_aggr(x0)
+        x0 = self.bn3(x0)
+        x0 = self.activation1_after_aggr(x0)
+        
+        x = x + x0
+
+        x_1 = self.dropout12(x)
+        x_1 = self.linear12_after_aggr(x_1)
+        x_1 = self.bn12(x_1)
+        x_1 = self.activation12_after_aggr(x_1)
+
+        x = x + x_1
+
+        x_2 = self.dropout2(x)
+        x_2 = self.linear2_after_aggr(x_2)
+        x_2 = self.bn4(x_2)
+        x_2 = self.activation2_after_aggr(x_2)
+
+        x = x + x_2
+
+        x = self.dropout3(x)
+        x = self.linear2_regression(x)
+
+        return x
+
+Experiment 10:
+
+Repeating setting of experiment 9: skip connections, dropout prob of 0.5
+but changing the nonlinearities: tanh to ReLU
+
+Using ReLU in the same configuration used for Tanh the model was not able to learn:
+
+[INFO] epoch: 199/3000, training loss: 0.23341651260852814, validation loss: 0.24531561136245728
+[INFO] saving model checkpoint
+[INFO] epoch: 299/3000, training loss: 0.21744930744171143, validation loss: 0.248856782913208
+[INFO] saving model checkpoint
+[INFO] epoch: 399/3000, training loss: 0.21683427691459656, validation loss: 0.24228130280971527
+[INFO] saving model checkpoint
+[INFO] epoch: 499/3000, training loss: 0.2091461718082428, validation loss: 0.24215646088123322
+[INFO] saving model checkpoint
+[INFO] epoch: 599/3000, training loss: 0.20154649019241333, validation loss: 0.24234642088413239
+[INFO] saving model checkpoint
+[INFO] epoch: 699/3000, training loss: 0.1991925835609436, validation loss: 0.23649220168590546
+...
+[INFO] epoch: 1399/3000, training loss: 0.13896329700946808, validation loss: 0.24192675948143005
+[INFO] saving model checkpoint
+[INFO] epoch: 1499/3000, training loss: 0.12247497588396072, validation loss: 0.27370551228523254
+[INFO] saving model checkpoint
+
+Experiment 10b:
+
+Working with leakyrelu and initial gain:
+
+param.data *= (2/(1 + 0.01 ** 2)) ** (1/2)
+
+The model was able to learn and gave a stable training.
+
+Although it started overfitting after epoch 1200:
+
+[INFO] epoch: 599/3000, training loss: 0.06381302326917648, validation loss: 0.0693054050207138
+[INFO] saving model checkpoint
+[INFO] epoch: 699/3000, training loss: 0.055719029158353806, validation loss: 0.07084409892559052
+[INFO] saving model checkpoint
+[INFO] epoch: 799/3000, training loss: 0.04852575436234474, validation loss: 0.05956635624170303
+[INFO] saving model checkpoint
+[INFO] epoch: 899/3000, training loss: 0.04771999269723892, validation loss: 0.0702899917960167
+...
+[INFO] epoch: 999/3000, training loss: 0.04725588485598564, validation loss: 0.06053870543837547
+[INFO] saving model checkpoint
+[INFO] epoch: 1099/3000, training loss: 0.041070520877838135, validation loss: 0.0751296728849411
+[INFO] saving model checkpoint
+[INFO] epoch: 1199/3000, training loss: 0.04296770691871643, validation loss: 0.06126774847507477
+
+Experiment 10c:
+
+using PReLU:
+(and without weight decay - following PyTorch documentation)
+
+Very strong overfitting:
+
+[INFO] epoch: 1099/3000, training loss: 0.04385530576109886, validation loss: 0.20961681008338928
+[INFO] saving model checkpoint
+[INFO] epoch: 1199/3000, training loss: 0.04042728617787361, validation loss: 0.19931335747241974
+
+
+Experiment 11 (saved as experiment 10):
+
+Repeating experiment 9: skip connections, dropout of 0.5
+
+But now using learning rate decay, with decay rate of 0.005:
+
+
+    lr = (1/(1+0.005*epoch_index)) * 0.1
+    optimizer.param_groups[0]['lr'] = lr
+
+Training was very stable and decreased slowly and with little overfitting:
+
+[INFO] epoch: 1499/3000, training loss: 0.03793550282716751, validation loss: 0.03728114813566208
+[INFO] lr: 0.011771630370806356
+[INFO] saving model checkpoint
+[INFO] epoch: 1599/3000, training loss: 0.03937579691410065, validation loss: 0.042125947773456573
+[INFO] lr: 0.011117287381878822
+[INFO] saving model checkpoint
+[INFO] epoch: 1699/3000, training loss: 0.04054923355579376, validation loss: 0.03383161127567291
+[INFO] lr: 0.0105318588730911
+[INFO] saving model checkpoint
+[INFO] epoch: 1799/3000, training loss: 0.034909676760435104, validation loss: 0.03519493713974953
+[INFO] lr: 0.010005002501250625
+...
+[INFO] epoch: 2399/3000, training loss: 0.03334924206137657, validation loss: 0.034971464425325394
+[INFO] lr: 0.007695267410542515
+
+Probably training until epoch 2000 is good enought. After this and especially after epoch 2500 it started
+overfitting.
+
+Comparing with experiment 9, where training hat to stop after epoch 1100 due to overfitting:
+
+
+[INFO] epoch: 799/3000, training loss: 0.03621774539351463, validation loss: 0.040313661098480225
+[INFO] saving model checkpoint
+[INFO] epoch: 899/3000, training loss: 0.034891340881586075, validation loss: 0.037273041903972626
+[INFO] saving model checkpoint
+[INFO] epoch: 999/3000, training loss: 0.03799915686249733, validation loss: 0.03960180655121803
+
+
+Experiment 12:
+
+Changing a bit the order of the layers (bn first layer before dropout) and adding some batch norms 
+before the first layer and last layers of the NN
+
+This training was performed with the same learning rate decay as experiment 11.
+
+Training when very fast and very stable:
+
+[INFO] epoch: 299/2500, training loss: 0.03151848167181015, validation loss: 0.045428261160850525
+[INFO] epoch: 399/2500, training loss: 0.02529394067823887, validation loss: 0.0284135639667511
+[INFO] epoch: 499/2500, training loss: 0.02184963785111904, validation loss: 0.030479099601507187
+[INFO] epoch: 599/2500, training loss: 0.02306244894862175, validation loss: 0.029550187289714813
+[INFO] epoch: 699/2500, training loss: 0.019654138013720512, validation loss: 0.03005237504839897
+[INFO] epoch: 799/2500, training loss: 0.020948782563209534, validation loss: 0.025374919176101685
+[INFO] epoch: 899/2500, training loss: 0.02182084321975708, validation loss: 0.026729628443717957
+[INFO] epoch: 999/2500, training loss: 0.024095647037029266, validation loss: 0.028096267953515053
+[INFO] epoch: 1099/2500, training loss: 0.01681159995496273, validation loss: 0.02830471657216549
+
+[INFO] saving best model checkpoint: 0.02200277335941791
+
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.1,
+    "weight_decay": 1e-4,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 96,
+    "dropout": 0.5,
+    "num_epochs": 2500,
+    "device": "cpu",
+    "last_model": "saved_models/model_12.pt",
+    "best_model": "saved_models/best_model_12.pt",
+    "plot": "plots/training_12.png",
+    "save_every": 100,
+    "log_every": 100,
+}
+
+Experiment 13:
+
+Using model with 4 heads (model4), with learning rate warmup and then decay:
+
+Employing the same hyperparameters found to work well on flight data.
+
+
+[INFO] epoch: 399/2500, training loss: 0.029626065865159035, validation loss: 0.029861586168408394
+[INFO] epoch: 499/2500, training loss: 0.030648713931441307, validation loss: 0.02733922377228737
+[INFO] epoch: 599/2500, training loss: 0.026161184534430504, validation loss: 0.033001191914081573
+
+Between epochs 500 and 600 a lot of oscillation due to the learning rate reaching its peak before starting to go down again.
+Perhaps it would be sensible to start decreasing a little bit before this.
+
+Even though using unoptimal learning curves, it got a very respectable best loss.
+
+[INFO] saving best model checkpoint: 0.02460891753435135
+
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.5,
+    "weight_decay": 1e-4,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 128,
+    "dropout": 0.5,
+    "num_epochs": 2500,
+    "device": "cpu",
+    "last_model": "saved_models/model_13.pt",
+    "best_model": "saved_models/best_model_13.pt",
+    "plot": "plots/training_13.png",
+    "save_every": 100,
+    "log_every": 100,
+    "n_heads": 4
+}
+
+train_dataset = PointNeighborhood(train_data, 
+                                  train=True, 
+                                  normalize_time_difference=parameters["normalize_timescale"], # training the model to predict looking back at this interval
+                                  hidden=parameters["hidden_size"]//parameters["n_heads"],
+                                  random_noise=parameters["random_noise"], 
+                                  noise_scale=parameters["noise_scale"])
+
+
+val_dataset = PointNeighborhood(val_data,
+                                train=False,
+                                hidden=parameters["hidden_size"]//parameters["n_heads"],
+                                normalize_time_difference=parameters["normalize_timescale"]) # training the model to predict looking back at this interval
+
+#model = SpatialRegressor3(hidden=parameters["hidden_size"], prob=parameters["dropout"])
+model = MultiHeadSpatialRegressor(hidden=parameters["hidden_size"], n_head=parameters["n_heads"], prob=parameters["dropout"])
+    
+    if epoch_index < 550: # warmup
+        lr = (1/(1+0.1*(700-epoch_index))) * 0.5
+        optimizer.param_groups[0]['lr'] = lr
+        lr_first_half = lr
+    else:
+        lr = (1/(1+0.1*(epoch_index-550))) * lr_first_half
+        optimizer.param_groups[0]['lr'] = lr
+
+
+Experiment 14:
+
+Trying to optimize the learning rate warmup and decay curves, we used a smaller base learning rate of 0.3, so that
+the final warmup loss would stop increasing earlier the more pronounced oscillations began.
+
+Did not get better results.
+  
+And we changed the decay curve to be smoother and slower in the decrease:
+
+    if epoch_index < 550: # warmup
+        lr = (1/(1+0.1*(700-epoch_index))) * parameters["learning_rate"]
+        optimizer.param_groups[0]['lr'] = lr
+        lr_first_half = lr
+    else:
+
+        lr = (0.995  ** (epoch_index-550)) * lr_first_half
+        #lr = (1/(1+0.1*(epoch_index-550))) * lr_first_half
+        optimizer.param_groups[0]['lr'] = lr
+
+Fixing the learning rate in 0.01 and letting it train it got a result slightly better than model 12:
+
+[INFO] saving best model checkpoint: 0.021602174267172813 (training_14_p1)
+
+parameters = {
+    "batch_size": None,
+    "normalize_timescale": 2*np.pi,
+    "learning_rate": 0.3,
+    "weight_decay": 1e-4,
+    "momentum": 0.9,
+    "random_noise": False,
+    "noise_scale": None,
+    "hidden_size": 128,
+    "dropout": 0.5,
+    "num_epochs": 2500,
+    "device": "cpu",
+    "last_model": "saved_models/model_14.pt",
+    "best_model": "saved_models/best_model_14.pt",
+    "plot": "plots/training_14.png",
+    "save_every": 100,
+    "log_every": 100,
+    "n_heads": 4
+}
+
+
+----
+
+Prediction with the best model 12 on the test set:
+
+prediction number 100, current error: 0.019112503167463983
+prediction number 200, current error: 0.018359861000300393
+prediction number 300, current error: 0.017499249620587014
+prediction number 400, current error: 0.01666748809106458
+prediction number 500, current error: 0.015895995673525863
+prediction number 600, current error: 0.01517060397470129
+prediction number 700, current error: 0.014525725045736274
+prediction number 800, current error: 0.013945198782021901
+prediction number 900, current error: 0.013434130513502002
+prediction number 1000, current error: 0.012982907844277483
+prediction number 1100, current error: 0.012600963553828955
+prediction number 1200, current error: 0.012288025525545738
+prediction number 1300, current error: 0.012042724759303122
+prediction number 1400, current error: 0.011878217846621695
+prediction number 1500, current error: 0.011803508277676686
+prediction number 1600, current error: 0.01182332250337695
+prediction number 1700, current error: 0.011953243464154153
+prediction number 1800, current error: 0.01220277834701615
+prediction number 1900, current error: 0.01258269706807874
+prediction number 2000, current error: 0.013109745359921874
+prediction number 2100, current error: 0.013808501521984035
+prediction number 2200, current error: 0.014693888988091442
+prediction number 2300, current error: 0.01579950654919364
+prediction number 2400, current error: 0.017147075641454894
+prediction number 2500, current error: 0.018748575686592685
+Mean squared error: 0.018770957164628427
+

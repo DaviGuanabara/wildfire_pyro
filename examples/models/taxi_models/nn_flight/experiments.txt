@@ -1,0 +1,64 @@
+Experiment 1:
+
+[INFO] epoch: 330/2500, training loss: 7202.144126974126, validation loss: 6326.375909978693
+[INFO] lr: 0.0001
+[INFO] saving model checkpoint
+[INFO] saving best model checkpoint: 6326.375909978693
+
+### wrong script, teste on fixed sensors data
+Mean squared error: 6320.877894576113
+RMSE: 79.50394892441578
+
+Mean squared error: 3951.0228579025224
+RMSE: 62.85716234370211
+
+Experiment 2:
+
+Trying to balance the output of the network, oversampling samples with higher output values
+
+Training went very slow
+
+[INFO] epoch: 232/2500, training loss: 13507.049101142473, validation loss: 13350.746049360794
+[INFO] lr: 0.004059999999999986
+[INFO] saving model checkpoint
+[INFO] saving best model checkpoint: 13350.746049360794
+
+### wrong script, teste on fixed sensors data
+Mean squared error: 6932.362150820576
+RMSE: 83.26080801205677
+
+Experiment 2.1: 
+
+1 prediction head, Using relu as non linearity:
+
+[INFO] epoch: 145/2500, training loss: 12581.689873151885, validation loss: 11687.392844460226
+[INFO] lr: 0.02505
+[INFO] saving model checkpoint
+[INFO] saving best model checkpoint: 11687.392844460226
+
+### wrong script, teste on fixed sensors data
+Mean squared error: 6910.379658201751
+RMSE: 83.12869335074232
+####
+
+Mean squared error: 5107.343112051426
+RMSE: 71.4656778604347
+
+Experiment 4 (mac):
+
+Using 8 prediction heads and relu
+
+Mean squared error: 4724.278819458949
+RMSE: 68.73338940761577
+
+Experiment 4 - tanh (colab):
+
+Using 8 prediction heads and tanh
+
+### wrong script, teste on fixed sensors data
+Mean squared error: 6137.828305841264
+RMSE: 78.34429338401914
+###
+
+Mean squared error: 5398.789540741512
+RMSE: 73.47645568984333

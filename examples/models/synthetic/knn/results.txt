@@ -1,0 +1,31 @@
+========= FIXED SENSORS
+Hyperparameters:
+
+n_samples = 160
+prob = 0.6
+n_neighbors = 3
+normalize_by = 1.0
+
+Performance on test set:
+
+data shape: (1393, 4)
+MSE: 0.0288424847514167
+
+========= FLIGHT SENSORS
+Hyperparameters:
+
+n_samples = 160 #90
+prob = 0.4
+n_neighbors = 3
+normalize_by = 2.174
+
+flight sensors
+data shape: (1037, 4)
+MSE: 0.12941766819865205
+
+changing the final timestep to 24.10 instead of 24.46:
+(interval goes from [18.85380665 18.85629228 18.85969721 ... 24.44683017 24.45559684
+ 24.46436351])
+
+RMSE: 0.2163260428797962
+MSE: 0.04679695682803143

@@ -1,0 +1,107 @@
+# number of neighbors
+
+n_samples = 90
+prob = 0.9
+past_days_in_prediction = 48
+
+n neighbors 3
+RMSE: 65.11473653424221
+n neighbors 4
+RMSE: 64.83310600604383 <==== best
+n neighbors 5
+RMSE: 64.9118335529181
+n neighbors 6
+RMSE: 64.84302569286483
+n neighbors 7
+RMSE: 65.16210506181021
+n neighbors 8
+RMSE: 65.3143143790779
+n neighbors 9
+RMSE: 65.46650271613872
+n neighbors 10
+RMSE: 65.86970005139423
+n neighbors 11
+RMSE: 66.08084584035986
+n neighbors 12
+RMSE: 66.3182881373757
+n neighbors 13
+RMSE: 66.72228390409954
+n neighbors 14
+RMSE: 66.97956963078634
+n neighbors 15
+RMSE: 67.24005381258402
+n neighbors 16
+RMSE: 67.38726178834536
+n neighbors 17
+RMSE: 67.74480088831203
+n neighbors 18
+RMSE: 68.02833198740635
+n neighbors 19
+RMSE: 68.20901116494642
+
+# past days in prediction - every 48 means one day, e.g. 480 means 10 days
+
+n_samples = 90
+prob = 0.9
+n_neighbors = 4
+
+days history in prediction: 48
+RMSE: 64.994750490538
+days history in prediction: 96
+RMSE: 74.3406656855997
+days history in prediction: 144 <== best
+RMSE: 62.3106905336513
+days history in prediction: 192
+RMSE: 69.08966188850617
+days history in prediction: 240
+RMSE: 72.14850177515802
+days history in prediction: 288
+RMSE: 66.03157896440612
+days history in prediction: 336
+RMSE: 72.20488156088993
+days history in prediction: 384
+RMSE: 74.549798727356
+days history in prediction: 432
+RMSE: 77.54554656946459
+days history in prediction: 480
+RMSE: 79.9493251905978
+days history in prediction: 528
+RMSE: 82.85677094759377
+days history in prediction: 576
+RMSE: 77.3333509947213
+days history in prediction: 624
+RMSE: 72.76143103681176
+days history in prediction: 672
+RMSE: 78.850489977973
+
+# bootstrap probability
+
+n_samples = 90
+n_neighbors = 4
+past_days_in_prediction = 144
+
+prob: 0.1
+RMSE: 72.10245329846548
+prob: 0.2
+RMSE: 66.47031745314125
+prob: 0.30000000000000004
+RMSE: 63.962446561419924
+prob: 0.4
+RMSE: 62.94095307180346
+prob: 0.5
+RMSE: 62.34870025235943
+prob: 0.6
+RMSE: 62.169074212750104
+prob: 0.7000000000000001 <=== best
+RMSE: 61.96260311505995
+prob: 0.8
+RMSE: 62.16068645210474
+prob: 0.9
+RMSE: 62.17838137121695
+
+--------------------------
+Configuration chosen:
+
+prob = 0.7
+n_neighbors = 4
+past_days_in_prediction = 144
