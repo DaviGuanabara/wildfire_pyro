@@ -1,9 +1,9 @@
 import torch
 import numpy as np
 from typing import Any, Dict
-from model import DeepSetAttentionNet
-from gymnasium import spaces
 
+from gymnasium import spaces
+from wildfire_private.model import DeepSetAttentionNet
 
 class EnvironmentManager:
     """
@@ -42,9 +42,9 @@ class EnvironmentManager:
         """
         Retorna a forma esperada da observação a partir do espaço de observação.
         """
-        if isinstance(observation_space, gym.spaces.Box):
+        if isinstance(observation_space, spaces.Box):
             return observation_space.shape
-        elif isinstance(observation_space, gym.spaces.Discrete):
+        elif isinstance(observation_space, spaces.Discrete):
             return (1,)
         else:
             raise NotImplementedError(
@@ -56,9 +56,9 @@ class EnvironmentManager:
         """
         Retorna a forma esperada da ação a partir do espaço de ação.
         """
-        if isinstance(action_space, gym.spaces.Box):
+        if isinstance(action_space, spaces.Box):
             return action_space.shape
-        elif isinstance(action_space, gym.spaces.Discrete):
+        elif isinstance(action_space, spaces.Discrete):
             return (1,)
         else:
             raise NotImplementedError(
