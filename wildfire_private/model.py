@@ -117,13 +117,13 @@ class MLPphi(nn.Module):
         u_flat = u.view(-1, self.features)  # (batch * neighbors, features)
 
         input_block_1 = u_flat
-        output_block_1 = self.phi_block_1(input_block_1)
+        output_block_1 = self.phi_block_1.forward(input_block_1)
 
         input_block_2 = output_block_1
-        output_block_2 = self.phi_block_2(input_block_2)
+        output_block_2 = self.phi_block_2.forward(input_block_2)
 
         input_block_3 = output_block_2 + input_block_2
-        output_block_3 = self.phi_block_3(input_block_3)
+        output_block_3 = self.phi_block_3.forward(input_block_3)
 
         final_output = output_block_3 + input_block_3
         final_output = final_output.view(batch_size, num_neighbors, self.hidden)
@@ -193,13 +193,13 @@ class MLPomega(nn.Module):
         u_flat = u.view(-1, self.features)  # (batch * neighbors, features)
 
         input_block_1 = u_flat
-        output_block_1 = self.omega_block_1(input_block_1)
+        output_block_1 = self.omega_block_1.forward(input_block_1)
 
         input_block_2 = output_block_1
-        output_block_2 = self.omega_block_2(input_block_2)
+        output_block_2 = self.omega_block_2.forward(input_block_2)
 
         input_block_3 = output_block_2 + input_block_2
-        output_block_3 = self.omega_block_3(input_block_3)
+        output_block_3 = self.omega_block_3.forward(input_block_3)
 
         output_block_3_masked = output_block_3.masked_fill(mask == 0, -float("inf"))
 
@@ -278,16 +278,16 @@ class MLPtheta(nn.Module):
         u_flat = u.view(-1, self.features)  # (batch * neighbors, features)
 
         input_block_1 = u_flat
-        output_block_1 = self.theta_block_1(input_block_1)
+        output_block_1 = self.theta_block_1.forward(input_block_1)
 
         input_block_2 = output_block_1 + input_block_1
-        output_block_2 = self.theta_block_2(input_block_2)
+        output_block_2 = self.theta_block_2.forward(input_block_2)
 
         input_block_3 = output_block_2 + input_block_2
-        output_block_3 = self.theta_block_3(input_block_3)
+        output_block_3 = self.theta_block_3.forward(input_block_3)
 
         input_block_4 = output_block_3 + input_block_3
-        output_block_4 = self.theta_block_4(input_block_4)
+        output_block_4 = self.theta_block_4.forward(input_block_4)
 
         final_output = output_block_4
         final_output = final_output.view(batch_size, num_neighbors, self.hidden)
@@ -365,12 +365,12 @@ class DeepSetAttentionNet(nn.Module):
         batch_size, num_neighbors, _ = u.shape
         flattened_input = u.view(-1, self.input_dim)
 
-        output_mlp_phi = self.mlp_phi(flattened_input)
-        output_mlp_omega = self.mlp_omega(flattened_input, mask)
+        output_mlp_phi = self.mlp_phi.forward(flattened_input)
+        output_mlp_omega = self.mlp_omega.forward(flattened_input, mask)
 
         weighted_features = output_mlp_phi * output_mlp_omega
         aggregated_features = weighted_features.sum(dim=1).view(batch_size, -1)
 
-        output_mlp_theta = self.mlp_theta(aggregated_features)
+        output_mlp_theta = self.mlp_theta.forward(aggregated_features)
 
         return output_mlp_theta

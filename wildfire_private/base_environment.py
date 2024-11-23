@@ -3,86 +3,173 @@ from gymnasium import spaces
 import pandas as pd
 import numpy as np
 
+from abc import ABC, abstractmethod
 
-class SensorEnvironment(gym.Env):
+
+class BaseEnvironment(gym.Env):
     """
-    Gymnasium environment for processing sensor data.
+    Base class for Gymnasium environments processing sensor data.
 
-    Each episode corresponds to one sensor's lifetime, and the goal is to predict
-    the variable `y` for the given observations `t`, `lat`, and `lon`.
+    This class abstracts common functionalities for environments that handle
+    time-series sensor data, including resetting, stepping, and computing rewards.
+
+    Attributes:
+        data (pd.DataFrame): Loaded dataset containing sensor data.
+        current_step (int): Current timestep within an episode.
+        max_steps (int): Maximum number of steps per episode.
+        data_path (str): Path to the dataset CSV file.
+        ground_truth (float): The true value for the current step (to be predicted).
     """
 
-    def __init__(self, data_path, max_steps=50):
-        super(SensorEnvironment, self).__init__()
+    def __init__(self, data_path: str, max_steps: int = 50):
+        """
+        Initialize the base environment.
 
-        # Load the data
-        self.data = pd.read_csv(data_path)
-        self.sensors = self.data['lat'].unique()
+        Args:
+            data_path (str): Path to the dataset CSV file.
+            max_steps (int): Maximum number of steps per episode.
+        """
+        super(BaseEnvironment, self).__init__()
+        self.data_path = data_path
         self.max_steps = max_steps
 
-        # Observation space: [t, lat, lon]
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
-
-        # Action space: Predicting `y` (continuous value)
-        self.action_space = spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32)
-
+        # Placeholder attributes
+        self.data: np.ndarray = None
         self.current_step = 0
-        self.current_sensor = None
-        self.current_data = None
+        self.ground_truth = None
+
+        # Load data and set observation and action spaces
+        self._load_data(data_path)
+        self._pre_process_data()
+        self._set_spaces()
+
+    def _load_data(self, data_path: str):
+        """
+        Load the dataset from the specified path.
+
+        Args:
+            data_path (str): Path to the dataset file.
+
+        Raises:
+            ValueError: If the dataset is empty or invalid.
+            FileNotFoundError: If the file does not exist.
+        """
+        try:
+            self.data = pd.read_csv(data_path)
+            if self.data.empty:
+                raise ValueError(f"The dataset at {data_path} is empty.")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {data_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to load data: {e}")
+
+    def _pre_process_data(self):
+        """
+        Pre-process the dataset to add necessary attributes or columns.
+
+        This method should be overridden by subclasses to perform any necessary
+        pre-processing steps on the dataset.
+        """
+        raise NotImplementedError(
+            "`_pre_process_data` must be implemented in the subclass to define observation and action spaces ranges."
+        )
+    
+    def _set_spaces(self):
+        """
+        Define observation and action spaces.
+
+        This method should be overridden by subclasses to specify
+        the observation space and action space as required by the specific environment.
+        """
+        raise NotImplementedError(
+            "`_set_spaces` must be implemented in the subclass to define observation and action spaces."
+        )
+
+    @abstractmethod
+    def _compute_observation(self):
+        pass
+
+    @abstractmethod
+    def _compute_ground_truth(self):
+        pass
+
+    @abstractmethod
+    def _compute_reward(self, action, ground_truth):
+        pass
 
     def reset(self, seed=None, options=None):
         """
         Reset the environment for a new episode.
+
+        Args:
+            seed (int, optional): Random seed for reproducibility.
+            options (dict, optional): Additional options for reset.
+
+        Returns:
+            tuple: Initial observation and additional information.
         """
         super().reset(seed=seed)
-
-        # Randomly select a sensor for this episode
-        self.current_sensor = np.random.choice(self.sensors)
-        self.current_data = self.data[self.data['lat'] == self.current_sensor].reset_index(drop=True)
         self.current_step = 0
 
-        # First observation
-        obs = self._get_obs()
-        return obs, {}
+        observation, self.ground_truth = (
+            self._compute_observation(),
+            self._compute_ground_truth(),
+        )
+
+        return observation, {"ground_truth": self.ground_truth}
 
     def step(self, action):
         """
         Take an action and move to the next step.
+
+        Args:
+            action (np.ndarray): The action taken by the agent.
+
+        Returns:
+            tuple: Observation, reward, termination status, truncation status, and additional info.
         """
-        # Get the true value of `y`
-        y_desired = self.current_data.iloc[self.current_step]['y']
-
-        # Calculate reward (negative mean squared error)
-        predicted_y = action[0]
-        reward = -np.square(predicted_y - y_desired)
-
-        # Move to the next step
+        reward = self._compute_reward(action, self.ground_truth)
         self.current_step += 1
-        done = self.current_step >= len(self.current_data) or self.current_step >= self.max_steps
 
-        # Get next observation or end episode
-        if done:
-            obs = None
+        terminated = self.is_terminated()
+        if not terminated:
+            observation, self.ground_truth = (
+                self._compute_observation(),
+                self._compute_ground_truth(),
+            )
         else:
-            obs = self._get_obs()
+            observation = None
 
-        return obs, reward, done, False, {y_desired: y_desired}
+        return (
+            observation,
+            reward,
+            terminated,
+            False,
+            {"ground_truth": self.ground_truth},
+        )
 
-    def _get_obs(self):
+    def is_terminated(self):
         """
-        Get the current observation.
+        Check if the current episode is over.
+
+        Returns:
+            bool: True if the episode has ended, False otherwise.
         """
-        row = self.current_data.iloc[self.current_step]
-        return np.array([row['t'], row['lat'], row['lon']], dtype=np.float32)
+        return (
+            self.current_step >= len(self.data) or self.current_step >= self.max_steps
+        )
 
     def render(self, mode="human"):
         """
-        Optional: Render the environment's state.
+        Render the environment's current state.
+
+        Args:
+            mode (str): The mode of rendering. Defaults to "human".
         """
-        print(f"Step: {self.current_step}, Sensor: {self.current_sensor}")
+        print(f"Step: {self.current_step}, Ground Truth: {self.ground_truth}")
 
     def close(self):
         """
-        Cleanup resources.
+        Cleanup resources before exiting.
         """
         pass

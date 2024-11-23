@@ -5,6 +5,7 @@ from typing import Any, Dict
 from gymnasium import spaces
 from wildfire_private.model import DeepSetAttentionNet
 
+
 class EnvironmentManager:
     """
     Gerencia interações com o ambiente e coleta rollouts.
@@ -32,7 +33,7 @@ class EnvironmentManager:
         self.actions = torch.zeros((buffer_size,) + self.action_shape, device=device)
         self.rewards = torch.zeros(buffer_size, device=device)
         self.masks = torch.zeros(buffer_size, device=device)
-        self.y_desired = torch.zeros((buffer_size, 1), device=device)
+        self.ground_truth = torch.zeros((buffer_size, 1), device=device)
 
         self.pos = 0
         self.full = False
@@ -72,14 +73,14 @@ class EnvironmentManager:
         self.pos = 0
         self.full = False
 
-    def add_to_buffer(self, obs, action, reward, y_desired, mask):
+    def add_to_buffer(self, obs, action, reward, ground_truth, mask):
         """
         Adiciona um novo passo ao buffer.
         """
         self.observations[self.pos] = torch.tensor(obs, device=self.device)
         self.actions[self.pos] = torch.tensor(action, device=self.device)
         self.rewards[self.pos] = torch.tensor(reward, device=self.device)
-        self.y_desired[self.pos] = torch.tensor(y_desired, device=self.device)
+        self.ground_truth[self.pos] = torch.tensor(ground_truth, device=self.device)
         self.masks[self.pos] = torch.tensor(mask, device=self.device)
 
         self.pos = (self.pos + 1) % self.buffer_size
@@ -97,13 +98,13 @@ class EnvironmentManager:
                 action = neural_network.predict(torch.tensor(obs, device=self.device))
 
             new_obs, reward, done, truncated, info = self.env.step(action)
-            y_desired = info.get("y_desired", None)
+            ground_truth = info.get("ground_truth", None)
 
-            if y_desired is None:
-                print("[Warning] Missing y_desired. Ending rollout.")
+            if ground_truth is None:
+                print("[Warning] Missing ground_truth. Ending rollout.")
                 break
 
-            self.add_to_buffer(obs, action, reward, y_desired, 1 - int(done))
+            self.add_to_buffer(obs, action, reward, ground_truth, 1 - int(done))
             obs = new_obs
 
             if done or truncated:
@@ -124,7 +125,7 @@ class EnvironmentManager:
             self.observations[indices],
             self.masks[indices],
             self.actions[indices],
-            self.y_desired[indices],
+            self.ground_truth[indices],
         )
 
     def size(self):
@@ -168,10 +169,10 @@ class DeepSetAttentionNetWrapper:
         total_loss = 0.0
 
         for _ in range(num_batches):
-            obs, mask, y_desired = self.env_manager.get_batch(self.batch_size)
+            obs, mask, ground_truth = self.env_manager.get_batch(self.batch_size)
             self.optimizer.zero_grad()
             y_pred = self.neural_network(obs, mask)
-            loss = self.loss_func(y_pred, y_desired)
+            loss = self.loss_func(y_pred, ground_truth)
             loss.backward()
             self.optimizer.step()
             total_loss += loss.item()
