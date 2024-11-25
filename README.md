@@ -9,6 +9,10 @@ As described in the accompanying article, the primary aim is to predict spatial 
 
 #### **Current Status**
 The project is under active development and is not yet functional.
+
+#### **Data Flow**
+
+data.csv -> sensor manager -> gymnasium environment -> model wrapper
 ---
 
 ### **System Components**
