@@ -4,7 +4,6 @@ Segue a versão revisada e melhorada do arquivo Markdown:
 
 # Arquitetura do Modelo: Fluxos e Módulos
 
-## **Visão Geral**
 
 Este documento descreve a arquitetura do modelo com foco nos fluxos de dados e na organização modular. O modelo foi projetado para processar vizinhanças espaciais e capturar dependências locais utilizando Perceptrons Multicamadas (MLPs). Ele é dividido em três módulos principais:
 
@@ -16,7 +15,6 @@ A interação entre esses módulos segue o fluxo descrito no artigo e demonstrad
 
 ## **Diagramas de Referência**
 
-### **Fluxo Geral do Modelo**
 ![Fluxo do Modelo](figures/neural_network_architecture.png)
 
 ---
