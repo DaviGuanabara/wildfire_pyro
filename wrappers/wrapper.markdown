@@ -1,6 +1,6 @@
-Entendido! Vamos abordar a estrutura do `train.py` de forma **top-down**, definindo as seções principais e os componentes que ele deve conter. Isso ajudará a organizar o código de maneira clara e modular.
 
-### **Estrutura Proposta para `train.py`**
+O código ainda está em desenvolvimento.
+### **Estrutura Proposta para `deep_set_attention_net_wrapper.py`**
 
 1. **Importações**
    - **Descrição:** Importar todas as bibliotecas e módulos necessários para o treinamento.
@@ -114,40 +114,3 @@ train.py
 │
 └── Função Principal e Execução do Script
 ```
-
-### **Próximos Passos**
-
-1. **Definir Hiperparâmetros:**
-   - Centralizar todos os hiperparâmetros em um dicionário ou utilizar bibliotecas como `argparse` para facilitar a configuração.
-
-2. **Implementar Carregamento de Dados:**
-   - Criar funções ou classes responsáveis por ler e preparar os dados para o treinamento.
-
-3. **Instanciar o Modelo:**
-   - Definir a arquitetura do modelo e mover para o dispositivo adequado.
-
-4. **Configurar Função de Perda e Otimizador:**
-   - Selecionar a função de perda apropriada e configurar o otimizador com os hiperparâmetros definidos.
-
-5. **Gerenciar o Estado de Treinamento:**
-   - Implementar a classe `TrainingHistory` com métodos para salvar e carregar o estado de treinamento.
-
-6. **Desenvolver o Loop de Treinamento:**
-   - Escrever a lógica para iterar sobre épocas e batches, calcular perdas, realizar backpropagation e atualizar pesos.
-
-7. **Adicionar Validação e Monitoramento:**
-   - Implementar a avaliação do modelo em dados de validação e adicionar logs para acompanhar o progresso.
-
-8. **Implementar Salvamento de Checkpoints:**
-   - Garantir que o modelo e o estado de treinamento sejam salvos periodicamente e quando melhorias forem observadas.
-
-9. **Encapsular Tudo em uma Função Principal:**
-   - Organizar o fluxo completo dentro de uma função `main()` para facilitar a execução e futuras expansões.
-
-### **Conclusão**
-
-Esta abordagem **top-down** permite que você tenha uma visão geral clara das componentes necessárias no seu script de treinamento (`train.py`). Ao dividir o processo em etapas lógicas e modulares, você facilita a manutenção, a leitura e futuras expansões do código.
-
-Quando estiver pronto para aprofundar em uma dessas seções, por exemplo, **Definir Hiperparâmetros** ou **Carregamento de Dados**, podemos abordar cada uma de forma incremental com pequenos trechos de código e explicações detalhadas.
-
-Me avise qual seção você gostaria de abordar a seguir ou se há algum ajuste na estrutura proposta!
