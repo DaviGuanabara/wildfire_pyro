@@ -14,6 +14,11 @@ Este documento descreve a arquitetura do modelo com foco nos fluxos de dados e n
 
 A interação entre esses módulos segue o fluxo descrito no artigo e demonstrado no diagrama abaixo.
 
+## **Diagramas de Referência**
+
+### **Fluxo Geral do Modelo**
+![Fluxo do Modelo](figures/neural_network_architecture.png)
+
 ---
 
 ## **Fluxo Geral do Modelo**
@@ -31,7 +36,7 @@ O fluxo de dados no modelo ocorre em três etapas principais:
 
 ---
 
-## **Background Simplificado: Mecanismo de Atenção**
+## **Background: Mecanismo de Atenção**
 
 O mecanismo de atenção, amplamente utilizado em aprendizado de máquina, atribui pesos diferentes às entradas com base em sua relevância. Ele é inspirado pela capacidade humana de focar em aspectos importantes de uma tarefa, enquanto ignora detalhes menos significativos. No contexto deste modelo:
 
@@ -74,16 +79,7 @@ O \( \text{MLP}_\omega \) combina as saídas do \( \text{MLP}_\phi \) (represent
 
 ---
 
-## **Diagramas de Referência**
-
-### **Fluxo Geral do Modelo**
-![Fluxo do Modelo](figures/neural_network_architecture.png)
 
 
----
 
-
-## **Conclusão**
-
-A arquitetura modular permite que cada componente desempenhe uma função específica no fluxo geral, enquanto a integração entre os módulos captura de forma eficaz as dependências espaciais e temporais. Essa abordagem modular e hierárquica melhora a interpretabilidade e facilita a manutenção e evolução do modelo.
 
