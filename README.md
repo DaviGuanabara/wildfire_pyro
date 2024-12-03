@@ -6,8 +6,17 @@ This project focuses on spatiotemporal machine learning using deep sets of rando
 ## Purpose and Context
 As detailed in the accompanying article, the primary aim is to efficiently predict spatial and temporal variables while incorporating measures of uncertainty. The project demonstrates its utility across various datasets, including simulated data and real-world taxi flow data, by integrating deep learning with attention mechanisms.
 
-## Current Status
-The project is under active development and is progressing towards full functionality.
+## Status
+
+### Concluído
+- Finalização do **SensorManager**, responsável pela interação direta com a base de dados, incluindo carregamento, pré-processamento e identificação de sensores.
+
+### Em Andamento
+- Desenvolvimento do **FixedSensorEnvironment**, que utiliza o SensorManager para simular interações no formato do Gymnasium Farama e Stable Baselines 3.
+
+### Próximos Passos
+- Implementação do **Model Wrapper** (`deep_set_attention_net_wrapper.py`), que permitirá funções como `.train()` e `.predict()`, alinhadas com as convenções do Stable Baselines 3.
+- Desenvolvimento da classe **Neural Network Model** (`deep_set_attention_net.py`) para estabelecer a primeira versão do modelo preditivo.
 
 ## Data Flow
 data.csv -> SensorManager -> FixedSensorEnvironment -> Model Wrapper
@@ -65,19 +74,7 @@ Located in the `examples/` directory, demonstrating:
 
 ---
 
-## Status
 
-### Concluído
-- Finalização do **SensorManager**, responsável pela interação direta com a base de dados, incluindo carregamento, pré-processamento e identificação de sensores.
-
-### Em Andamento
-- Desenvolvimento do **FixedSensorEnvironment**, que utiliza o SensorManager para simular interações no formato do Gymnasium Farama e Stable Baselines 3.
-
-### Próximos Passos
-- Implementação do **Model Wrapper** (`deep_set_attention_net_wrapper.py`), que permitirá funções como `.train()` e `.predict()`, alinhadas com as convenções do Stable Baselines 3.
-- Desenvolvimento da classe **Neural Network Model** (`deep_set_attention_net.py`) para estabelecer a primeira versão do modelo preditivo.
-
----
 
 
 ## Contact
