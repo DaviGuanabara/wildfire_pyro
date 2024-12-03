@@ -351,7 +351,8 @@ class DeepSetAttentionNet(nn.Module):
         self.hidden = hidden
         self.prob = prob
 
-    def forward(self, u, mask):
+    # TODO: I have to find a better way to abstract "observation" to extract "mask" and "u" of it.
+    def forward(self, observation):
         """
         Forward pass of the DeepSetAttentionNet.
 
@@ -362,6 +363,9 @@ class DeepSetAttentionNet(nn.Module):
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, output_dim).
         """
+        
+        
+        
         batch_size, num_neighbors, _ = u.shape
         flattened_input = u.view(-1, self.input_dim)
 

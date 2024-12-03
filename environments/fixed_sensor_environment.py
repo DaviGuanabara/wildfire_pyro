@@ -1,158 +1,204 @@
-from wildfire_pyro.environments.components.sensor_manager import SensorManager
-from wildfire_pyro.environments.base_environment import BaseEnvironment
-
 import numpy as np
 import pandas as pd
-from gymnasium import spaces
-
 import logging
+from typing import Tuple, Optional
+from gymnasium import spaces, Env
 
+from wildfire_pyro.environments.components.sensor_manager import SensorManager
+
+# Configuração básica do logging
 logging.basicConfig(level=logging.INFO)
 
 
-from gymnasium import spaces
-
-
-class FixedSensorEnvironment():
-    def __init__(self, data_path, max_steps=50, n_neighbors_min=5, n_neighbors_max=10):
+class FixedSensorEnvironment(Env):
+    def __init__(
+        self,
+        data_path: str,
+        max_steps: int = 50,
+        n_neighbors_min: int = 5,
+        n_neighbors_max: int = 10,
+    ):
         """
-        Initialize the Fixed Sensor Environment.
+        Inicializa o Fixed Sensor Environment.
 
         Args:
-            data_path (str): Path to the dataset.
-            max_steps (int): Maximum steps per episode.
-            n_neighbors_min (int): Minimum number of neighbors.
-            n_neighbors_max (int): Maximum number of neighbors.
+            data_path (str): Caminho para o dataset.
+            max_steps (int): Número máximo de passos por episódio.
+            n_neighbors_min (int): Número mínimo de vizinhos.
+            n_neighbors_max (int): Número máximo de vizinhos.
         """
+        super(FixedSensorEnvironment, self).__init__()
 
         self.max_steps = max_steps
         self.n_neighbors_min = n_neighbors_min
         self.n_neighbors_max = n_neighbors_max
-        self.data_path = data_path
         self.current_step = 0
         self.ground_truth = None
 
-        self._pre_process_data()
+        # Inicializar SensorManager (já realiza o pré-processamento dos dados)
         self.sensor_manager: SensorManager = SensorManager(data_path)
 
-        self._set_spaces()
+        # Definir espaços de observação e ação
+        self._define_spaces()
 
-    def _pre_process_data(self):
+    def _define_spaces(self):
         """
-        Pre-process the dataset (example implementation).
+        Define os espaços de observação e ação.
         """
-        self.data = pd.read_csv(self.data_path)
-        self.data["sensor_id"] = self.data.groupby(["lat", "lon"]).ngroup()
-
-    def _set_spaces(self):
-        """
-        Define observation and action spaces.
-        """
+        # Observação: (n_neighbors_max, 5) - 4 para u_matrix + 1 para mask
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(4, self.n_neighbors_max), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(self.n_neighbors_max, 5), dtype=np.float32
         )
+
+        # Ação: Um único valor contínuo
         self.action_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
         )
 
-    def reset(self, seed=None, options=None):
+    def reset(
+        self, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> Tuple[np.ndarray, dict]:
         """
-        Reset the environment for a new episode.
-        """
-
-        self.current_step = 0
-
-        self.sensor_manager.update_sensor()
-        observation = self._compute_observation()
-        self.ground_truth = self._compute_ground_truth()
-        return observation, {"ground_truth": self.ground_truth}
-
-    def step(self, action):
-        """
-        Execute a step in the environment.
+        Reseta o ambiente para um novo episódio.
 
         Args:
-            action (np.ndarray): The action taken by the agent.
+            seed (Optional[int]): Semente para randomização.
+            options (Optional[dict]): Opções adicionais.
 
         Returns:
-            Tuple: (observation, reward, terminated, truncated, info)
+            Tuple[np.ndarray, dict]: Observação inicial e informações adicionais.
+        """
+        self.current_step = 0
+        self.sensor_manager.set_random_sensor()
+
+        observation, self.ground_truth = self._generate_observation()
+
+        return observation, {"ground_truth": self.ground_truth}
+
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, dict]:
+        """
+        Executa um passo no ambiente.
+
+        Args:
+            action (np.ndarray): A ação tomada pelo agente.
+
+        Returns:
+            Tuple[np.ndarray, float, bool, bool, dict]: Observação, recompensa, terminated, truncated, informações.
         """
         self.current_step += 1
-        try:
-            observation = self._compute_observation()
-            reward = self._compute_reward(action, self.ground_truth)
-            self.ground_truth = self._compute_ground_truth()
-            terminated = self._compute_terminated()
-        except IndexError:
-            terminated = True
-            observation = None
-            reward = 0.0
 
-        return observation, reward, terminated, False, {"ground_truth": self.ground_truth}
+        observation, ground_truth = self._generate_observation()
+        self.ground_truth = ground_truth
 
-    def _compute_reward(self, action, ground_truth):
-        """
-        Compute the reward for the current timestep.
-        """
-        return -(action - ground_truth)
+        reward = self._calculate_reward(action, ground_truth)
+        terminated = self._is_terminated()
+        truncated = False  # Pode ser ajustado conforme a lógica do ambiente
 
-    def _compute_observation(self):
-        """
-        Compute the observation for the current timestep.
-        """
-        target_row = self.sensor_manager.get_reading()
-        neighbors = self.sensor_manager.get_neighbors(
-            self.current_step,
-            time_window=3 * np.pi,
-            n_neighbors_min=self.n_neighbors_min,
-            n_neighbors_max=self.n_neighbors_max,
+        return (
+            observation,
+            reward,
+            terminated,
+            truncated,
+            {"ground_truth": ground_truth},
         )
-        u_matrix, mask = self._compute_u_matrix_and_mask(neighbors, target_row)
-        return (u_matrix, mask)
 
-    def _compute_ground_truth(self):
+    def _calculate_reward(self, action: np.ndarray, ground_truth: float) -> float:
         """
-        Compute the ground truth value for the current timestep.
-        """
-        target_row = self.sensor_manager.get_reading()
-        return target_row["y"]
+        Calcula a recompensa para o passo atual.
 
-    def _compute_u_matrix_and_mask(self, neighbors, target_row):
-        """
-        Compute the observation matrix (u_matrix) and mask.
-        """
-        u_matrix = np.zeros((4, self.n_neighbors_max), dtype=np.float32)
-        mask = np.zeros(self.n_neighbors_max, dtype=bool)
+        Args:
+            action (np.ndarray): Ação tomada pelo agente.
+            ground_truth (float): Valor de ground truth.
 
-        for i, (_, neighbor) in enumerate(neighbors.iterrows()):
-            if i >= self.n_neighbors_max:
-                break
-            u_matrix[:, i] = [
-                neighbor["lat"] - target_row["lat"],
-                neighbor["lon"] - target_row["lon"],
-                neighbor["t"] - target_row["t"],
-                neighbor["y"],
-            ]
-            mask[i] = True
-
-        return u_matrix, mask
-
-    def _compute_terminated(self):
+        Returns:
+            float: Recompensa calculada.
         """
-        Check if the episode should terminate.
+        error = np.abs(action[0] - ground_truth)
+        reward = -error
+        logging.debug(f"Recompensa calculada: {reward} (Erro: {error})")
+        return float(reward)
+
+    def _is_terminated(self) -> bool:
+        """
+        Verifica se o episódio deve terminar.
+
+        Returns:
+            bool: True se o episódio deve terminar, False caso contrário.
         """
         if self.current_step >= self.max_steps:
+            logging.info("Número máximo de passos alcançado. Episódio terminando.")
             return True
         return False
 
-    def _pre_process_data(self):
+    def _generate_observation(self) -> Tuple[np.ndarray, float]:
         """
-        Pre-process the dataset.
+        Gera a observação e o ground truth para o passo atual.
+
+        Returns:
+            Tuple[np.ndarray, float]: Observação com shape (n_neighbors_max, 5) e ground truth.
         """
-        pass
-    
+        target_row = self.sensor_manager.get_reading()
+        logging.debug(f"target row: {target_row}")
+
+        neighbors = self.sensor_manager.get_neighbors(
+            n_neighbors_max=self.n_neighbors_max,
+            n_neighbors_min=self.n_neighbors_min,
+            time_window=3 * np.pi,
+            distance_window=-1,
+        )
+
+        u_matrix, mask, ground_truth = self._prepare_features(neighbors, target_row)
+
+        # Concatenar u_matrix e mask horizontalmente
+        # u_matrix: (n_neighbors_max, 4)
+        # mask: (n_neighbors_max,)
+        # Reshape mask para (n_neighbors_max, 1) antes da concatenação
+        observation = np.hstack(
+            (u_matrix, mask.reshape(-1, 1).astype(np.float32))
+        )  # (n_neighbors_max, 5)
+
+        return observation, ground_truth
+
+    def _prepare_features(
+        self, neighbors: pd.DataFrame, target_row: pd.Series
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Prepara a matriz de observação (u_matrix), a máscara e o ground truth.
+
+        Args:
+            neighbors (pd.DataFrame): DataFrame com os vizinhos selecionados.
+            target_row (pd.Series): Linha de dados do sensor alvo.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, float]: u_matrix, mask e ground_truth.
+                - u_matrix: (n_neighbors_max, 4)
+                - mask: (n_neighbors_max,)
+                - ground_truth: float
+        """
+        u_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
+        mask = np.zeros(self.n_neighbors_max, dtype=bool)
+
+        for i in range(self.n_neighbors_max):
+            if i < len(neighbors):
+                neighbor = neighbors.iloc[i]
+                u_matrix[i, :] = [
+                    neighbor["lat"] - target_row["lat"],
+                    neighbor["lon"] - target_row["lon"],
+                    neighbor["t"] - target_row["t"],
+                    neighbor["y"],
+                ]
+                mask[i] = True
+            else:
+                # Preencher com zeros para vizinhos inexistentes
+                u_matrix[i, :] = [0.0, 0.0, 0.0, 0.0]
+                mask[i] = False
+
+        ground_truth = target_row["y"]
+
+        return u_matrix, mask, ground_truth
+
     def close(self):
         """
-        Close the environment.
+        Fecha o ambiente.
         """
         pass
