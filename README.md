@@ -6,7 +6,21 @@ This project focuses on spatiotemporal machine learning using deep sets of rando
 ## Purpose and Context
 As detailed in the accompanying article, the primary aim is to efficiently predict spatial and temporal variables while incorporating measures of uncertainty. The project demonstrates its utility across various datasets, including simulated data and real-world taxi flow data, by integrating deep learning with attention mechanisms.
 
+## Data Flow
+
+```mermaid
+graph LR
+    A[data.csv] --> B[SensorManager]
+    B --> C[FixedSensorEnvironment]
+    C --> D[Model Wrapper]
+    D --> E[Model]
+
+```
+
 ## Status
+
+
+
 
 ### Concluído
 - Finalização do **SensorManager**, responsável pela interação direta com a base de dados, incluindo carregamento, pré-processamento e identificação de sensores.
@@ -18,8 +32,7 @@ As detailed in the accompanying article, the primary aim is to efficiently predi
 - Implementação do **Model Wrapper** (`deep_set_attention_net_wrapper.py`), que permitirá funções como `.train()` e `.predict()`, alinhadas com as convenções do Stable Baselines 3.
 - Desenvolvimento da classe **Neural Network Model** (`deep_set_attention_net.py`) para estabelecer a primeira versão do modelo preditivo.
 
-## Data Flow
-data.csv -> SensorManager -> FixedSensorEnvironment -> Model Wrapper
+
 
 ---
 
