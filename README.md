@@ -1,72 +1,87 @@
+# Spatio-Temporal Data Analysis and Simulation Framework
 
-### README: Spatio-Temporal Data Analysis and Simulation Framework
+## Overview
+This project focuses on spatiotemporal machine learning using deep sets of random neighbors with attention mechanisms. The main objective is to simulate, analyze, and predict spatiotemporal phenomena based on sparse data collected through fixed or mobile sensors. This framework adheres to the conventions of **Farama Gymnasium**.
 
-#### **Overview**
-This project focuses on spatio-temporal machine learning using deep sets of random neighbors with attention mechanisms. The main purpose is to simulate, analyze, and predict spatio-temporal phenomena based on sparse data collected through fixed or mobile sensors. This framework adheres to the conventions of **Farama Gymnasium**.
+## Purpose and Context
+As detailed in the accompanying article, the primary aim is to efficiently predict spatial and temporal variables while incorporating measures of uncertainty. The project demonstrates its utility across various datasets, including simulated data and real-world taxi flow data, by integrating deep learning with attention mechanisms.
 
-#### **Purpose and Context**
-As described in the accompanying article, the primary aim is to predict spatial and temporal variables efficiently while incorporating measures of uncertainty. The project demonstrates its utility in various datasets, including simulated data and real-world taxi flow data, through the integration of deep learning with attention mechanisms.
+## Current Status
+The project is under active development and is progressing towards full functionality.
 
-#### **Current Status**
-The project is under active development and is not yet functional.
+## Data Flow
+data.csv -> SensorManager -> FixedSensorEnvironment -> Model Wrapper
 
-#### **Data Flow**
-
-data.csv -> sensor manager -> gymnasium environment -> model wrapper
 ---
 
-### **System Components**
+## System Components
 
-#### **1. Data Source**
-- Input: A CSV file containing sensor data, with fields for latitude, longitude, timestamp, and observed values.
-- Each sensor is uniquely identified by a combination of its latitude and longitude.
+### 1. Data Source
+- **Input**: A CSV file containing sensor data with fields for latitude, longitude, timestamp, and observed values.
+- **Sensor Identification**: Each sensor is uniquely identified by a combination of its latitude and longitude.
 
-#### **2. Data Flow**
+### 2. Data Flow
 **SensorManager** is the core component that:
-- **Loads Data**: Reads the CSV file and preprocesses it.
+- **Loads Data**: Reads and preprocesses the CSV file.
 - **Simulates Real-Time**: Manipulates the data to emulate real-time sensor readings.
 - **Sensor Identification**: Assigns unique IDs to sensors based on spatial coordinates.
-- **Data Access**: Allows selection of specific sensors and their neighbors based on a time window.
+- **Data Access**: Enables the selection of specific sensors and their neighbors based on a time window.
 
-#### **3. Simulation Environment**
-**Environment** class:
+### 3. Simulation Environment
+**FixedSensorEnvironment** class:
 - Adapts data processed by `SensorManager` into the **Farama Gymnasium** format.
 - Provides interfaces for sensor interaction, time-step transitions, and data aggregation.
 
-#### **4. AI Model Wrapper**
-- Wraps the environment with reinforcement learning models using **Stable Baselines 3**.
-- Handles both training (`train`) and prediction (`predict`) phases.
-- Integrates seamlessly with neural network models.
+### 4. AI Model Wrapper
+**deep_set_attention_net_wrapper.py**:
+- Wraps neural network model and receives the environment as in a **Stable Baselines 3** pattern.
+- Handles both training (`.train()`) and prediction (`.predict()`) phases.
+- Integrates seamlessly with neural network models by receiving the environment as an argument.
 
-#### **5. Deep Learning Model**
-Implemented in `model.py`:
+### 5. Deep Learning Model
+**deep_set_attention_net.py**:
 - Encodes the architecture using deep sets with an attention mechanism for random neighbor selection.
 - Provides uncertainty measures for predictions.
 
 ---
 
-### **Features**
+## Features
 
 1. **Random Neighbor Selection**:
    - Randomly selects neighbors for prediction, ensuring a diverse range of spatial and temporal coverage.
 2. **Uncertainty Estimation**:
    - Measures prediction confidence, enabling informed decision-making.
-3. **Flexibility**:
-   - Supports both fixed and mobile sensor configurations.
-
----
-
-### **Usage**
-#### **Examples**
-- Located in the `examples/` directory, demonstrating:
-  - Data loading and preprocessing.
-  - Simulation setup for training and evaluation.
-  - Model training and inference workflows.
 
 
 ---
 
-### **Future Work**
+## Usage
+
+### Examples
+Located in the `examples/` directory, demonstrating:
+- Data loading and preprocessing.
+- Simulation setup for training and evaluation.
+- Model training and inference workflows.
+
+---
+
+## Status
+
+### Concluído
+- Finalização do **SensorManager**, responsável pela interação direta com a base de dados, incluindo carregamento, pré-processamento e identificação de sensores.
+
+### Em Andamento
+- Desenvolvimento do **FixedSensorEnvironment**, que utiliza o SensorManager para simular interações no formato do Gymnasium Farama e Stable Baselines 3.
+
+### Próximos Passos
+- Implementação do **Model Wrapper** (`deep_set_attention_net_wrapper.py`), que permitirá funções como `.train()` e `.predict()`, alinhadas com as convenções do Stable Baselines 3.
+- Desenvolvimento da classe **Neural Network Model** (`deep_set_attention_net.py`) para estabelecer a primeira versão do modelo preditivo.
+
+---
 
 
-#### **Contact**
+## Contact
+For questions, suggestions, or contributions, please contact:
+
+
+---
