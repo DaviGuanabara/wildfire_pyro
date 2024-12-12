@@ -75,9 +75,6 @@ class FixedSensorEnvironment(Env):
 
         return observation, {"ground_truth": self.ground_truth}
 
-    #TODO: VERIFICAR SE O STEP ESTÁ CORRETAMENTE DANDO O INCREMENT OU STEP DO SENSOR MANAGER
-    #APARENTEMENTE, N TÁ FAZENDO ISSO NÃO
-    #VERIFICAR QUE O INCREMENT_TIME ESTÁ CORRETAMENTE FUNCIONANDO
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """
         Executa um passo no ambiente.
@@ -89,9 +86,10 @@ class FixedSensorEnvironment(Env):
             Tuple[np.ndarray, float, bool, bool, dict]: Observação, recompensa, terminated, truncated, informações.
         """
         self.current_step += 1
-
-        observation, ground_truth = self._generate_observation()
         self.sensor_manager.increment_time()
+        
+        observation, ground_truth = self._generate_observation()
+        
         
         self.ground_truth = ground_truth
 

@@ -30,6 +30,7 @@ def test_initialization(fixed_sensor_env):
     ), "O ambiente não foi inicializado corretamente."
     assert len(env.sensor_manager.data) > 0, "Dataset não carregado corretamente."
 
+
 """
 def test_reset(fixed_sensor_env):
     
@@ -67,9 +68,9 @@ def test_step(fixed_sensor_env):
     u_matrix: np.ndarray = observation[:, :4]  # Primeiras 4 colunas
     mask: np.ndarray = observation[:, 4]  # Última coluna
 
-    #print("observation")
-    #print(observation)
-    
+    # print("observation")
+    # print(observation)
+
     print("u_matrix shape:", u_matrix.shape)
     print(u_matrix)
     print("mask shape:", mask.shape)
@@ -89,6 +90,18 @@ def test_step(fixed_sensor_env):
     # assert isinstance(reward, float), "Recompensa deve ser um número float."
     assert isinstance(terminated, bool), "Terminado deve ser um valor booleano."
     assert "ground_truth" in info, "As informações devem conter 'ground_truth'."
+
+    current_time_index = env.sensor_manager.current_time_index
+    current_sensor = env.sensor_manager.current_sensor
+
+    action = np.array([0.5])  # Ação fictícia
+    observation, reward, terminated, truncated, info = env.step(action)
+
+    new_time_index = env.sensor_manager.current_time_index
+    new_sensor = env.sensor_manager.current_sensor
+
+    print("test step")
+    print(current_sensor, current_time_index, new_sensor, new_time_index)
 
 
 def test_termination(fixed_sensor_env):
