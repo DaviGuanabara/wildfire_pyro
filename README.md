@@ -25,12 +25,18 @@ graph LR
 ### Concluído
 - Finalização do **SensorManager**, responsável pela interação direta com a base de dados, incluindo carregamento, pré-processamento e identificação de sensores.
 
-### Em Andamento
+
 - Desenvolvimento do **FixedSensorEnvironment**, que utiliza o SensorManager para simular interações no formato do Gymnasium Farama e Stable Baselines 3.
 
+
+- Implementação do **Model Wrapper** (`deep_set_attention_net_wrapper.py`).
+
+### Em Andamento
+- Teste do LearningManager
+  - Treinamento da rede
+  - Comparação do resultado com o obtido pelo projeto anterior
+
 ### Próximos Passos
-- Implementação do **Model Wrapper** (`deep_set_attention_net_wrapper.py`), que permitirá funções como `.train()` e `.predict()`, alinhadas com as convenções do Stable Baselines 3.
-- Desenvolvimento da classe **Neural Network Model** (`deep_set_attention_net.py`) para estabelecer a primeira versão do modelo preditivo.
 
 
 
