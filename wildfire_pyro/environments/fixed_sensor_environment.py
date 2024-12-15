@@ -5,12 +5,12 @@ from typing import Tuple, Optional
 from gymnasium import spaces, Env
 
 from wildfire_pyro.environments.components.sensor_manager import SensorManager
-
+from .base_environment import BaseEnvironment
 # Configuração básica do logging
 logging.basicConfig(level=logging.INFO)
 
 
-class FixedSensorEnvironment(Env):
+class FixedSensorEnvironment(BaseEnvironment):
     def __init__(
         self,
         data_path: str,
@@ -87,10 +87,9 @@ class FixedSensorEnvironment(Env):
         """
         self.current_step += 1
         self.sensor_manager.increment_time()
-        
+
         observation, ground_truth = self._generate_observation()
-        
-        
+
         self.ground_truth = ground_truth
 
         reward = self._calculate_reward(action, ground_truth)

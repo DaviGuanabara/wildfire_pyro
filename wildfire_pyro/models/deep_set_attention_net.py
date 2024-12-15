@@ -1,9 +1,4 @@
-# MODELO 3
-import torch.nn as nn
-
-
-import torch.nn as nn
-
+from torch import Tensor, nn
 
 class MLPBlock(nn.Module):
     """
@@ -114,7 +109,8 @@ class MLPphi(nn.Module):
             after the transformations of the blocks and residual summation.
         """
         batch_size, num_neighbors, _ = u.shape
-        u_flat = u.view(-1, self.features)  # (batch * neighbors, features)
+        # (batch * neighbors, features)
+        u_flat = u.reshape(-1, self.features)
 
         input_block_1 = u_flat
         output_block_1 = self.phi_block_1.forward(input_block_1)
@@ -178,6 +174,22 @@ class MLPomega(nn.Module):
 
         self.output_function = nn.Softmax(dim=1)
 
+    def apply_mask(tensor: Tensor, mask: Tensor, mask_value: float = -float("inf")) -> Tensor:
+        """
+        Applies a mask to a tensor, setting masked elements to a specific value.
+
+        Args:
+            tensor (torch.Tensor): The tensor to which the mask will be applied.
+            mask (torch.Tensor): The mask tensor (same or broadcastable shape as `tensor`).
+            mask_value (float, optional): The value to assign to masked elements. Default: -float("inf").
+
+        Returns:
+            torch.Tensor: The tensor with the mask applied.
+        """
+        if mask.dim() < tensor.dim():
+            mask = mask.unsqueeze(-1)  # Expand mask dimensions if needed
+        return tensor.masked_fill(mask == 0, mask_value)
+
     def forward(self, u, mask):
         """
         Performs the forward pass of the MLPomega.
@@ -190,8 +202,10 @@ class MLPomega(nn.Module):
             containing normalized attention weights.
         """
         batch_size, num_neighbors, _ = u.shape
-        u_flat = u.view(-1, self.features)  # (batch * neighbors, features)
 
+        # (batch * neighbors, features)
+        u_flat = u.reshape(-1, self.features)
+        
         input_block_1 = u_flat
         output_block_1 = self.omega_block_1.forward(input_block_1)
 
@@ -201,7 +215,8 @@ class MLPomega(nn.Module):
         input_block_3 = output_block_2 + input_block_2
         output_block_3 = self.omega_block_3.forward(input_block_3)
 
-        output_block_3_masked = output_block_3.masked_fill(mask == 0, -float("inf"))
+
+        output_block_3_masked = self.apply_mask(output_block_3, mask)
 
         final_output = self.output_function(output_block_3_masked)
         final_output = final_output.view(batch_size, num_neighbors, self.hidden)
@@ -275,7 +290,9 @@ class MLPtheta(nn.Module):
         """
 
         batch_size, num_neighbors, _ = u.shape
-        u_flat = u.view(-1, self.features)  # (batch * neighbors, features)
+        
+        # (batch * neighbors, features)
+        u_flat = u.reshape(-1, self.features)  
 
         input_block_1 = u_flat
         output_block_1 = self.theta_block_1.forward(input_block_1)
@@ -363,14 +380,17 @@ class DeepSetAttentionNet(nn.Module):
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, output_dim).
         """
-        
-        
-        
-        batch_size, num_neighbors, _ = u.shape
-        flattened_input = u.view(-1, self.input_dim)
 
-        output_mlp_phi = self.mlp_phi.forward(flattened_input)
-        output_mlp_omega = self.mlp_omega.forward(flattened_input, mask)
+        # (batch_size, num_neighbors, input_dim)
+        u = observation[:, :, : self.input_dim]  
+
+        # (batch_size, num_neighbors)
+        mask = observation[:, :, self.input_dim]  
+
+        batch_size, num_neighbors, _ = u.shape
+
+        output_mlp_phi = self.mlp_phi.forward(u)
+        output_mlp_omega = self.mlp_omega.forward(u, mask)
 
         weighted_features = output_mlp_phi * output_mlp_omega
         aggregated_features = weighted_features.sum(dim=1).view(batch_size, -1)

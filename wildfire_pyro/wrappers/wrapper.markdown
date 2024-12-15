@@ -1,5 +1,55 @@
 
 O código ainda está em desenvolvimento.
+
+# Supervised Learning Framework Inspired by Reinforcement Learning
+
+This framework provides a structured approach to supervised learning, inspired by patterns commonly used in reinforcement learning. It leverages Gymnasium environments and integrates seamlessly with neural network models for efficient training and prediction.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Creating the Environment](#creating-the-environment)
+  - [Initializing the Model](#initializing-the-model)
+  - [Training the Model](#training-the-model)
+  - [Making Predictions](#making-predictions)
+- [Components](#components)
+  - [ReplayBuffer](#replaybuffer)
+  - [EnvDataCollector](#envdatacollector)
+  - [LearningManager](#learningmanager)
+  - [Factory Function](#factory-function)
+- [Design Patterns Applied](#design-patterns-applied)
+- [Handling Observations and Masks](#handling-observations-and-masks)
+- [Code Quality Tools](#code-quality-tools)
+  - [mypy](#mypy)
+  - [flake8](#flake8)
+  - [black](#black)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+- **Modular Design**: Separates data collection, storage, and training into distinct components.
+- **Flexible Replay Buffer**: Efficiently stores and samples transitions for training.
+- **Neural Network Integration**: Easily integrate custom neural networks for prediction.
+- **Factory Pattern**: Simplifies model and manager instantiation based on environment configurations.
+- **Comprehensive Documentation**: Clear docstrings and comments for ease of use and maintenance.
+
+## Installation
+
+Ensure you have Python 3.7 or higher installed. Install the required packages using `pip`:
+
+```bash
+pip install torch gymnasium numpy wildfire_pyro
+
+
+
+
+
+
+
 ### **Estrutura Proposta para `deep_set_attention_net_wrapper.py`**
 
 1. **Importações**
