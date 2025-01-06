@@ -16,7 +16,8 @@ def sensor_manager():
     data_path = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__),
-            "data/synthetic/fixed_sensor/fixed.csv",  # Substitua pelo caminho correto do seu dataset
+            # Substitua pelo caminho correto do seu dataset
+            "data/synthetic/fixed_sensor/fixed.csv",
         )
     )
     sm = SensorManager(data_path)
@@ -33,6 +34,7 @@ def test_sensor_manager_initialization(sensor_manager: SensorManager):
         sm.current_sensor is not None
     ), "Nenhum sensor foi selecionado após update_sensor()."
     assert sm.current_time_index >= 0, "O índice de tempo inicial deve ser maior ou igual a 0."
+
 
 def test_get_neighbors(sensor_manager: SensorManager):
     """
@@ -69,7 +71,8 @@ def test_sensor_reading(sensor_manager):
     sm = sensor_manager
     reading = sm.get_reading()
 
-    assert isinstance(reading, pd.Series), "A leitura deve ser um pandas Series."
+    assert isinstance(
+        reading, pd.Series), "A leitura deve ser um pandas Series."
     assert (
         "t" in reading and "lat" in reading and "lon" in reading and "y" in reading
     ), "A leitura deve conter as colunas 't', 'lat', 'lon', e 'y'."
@@ -81,15 +84,17 @@ def test_neighbors_limits(sensor_manager: SensorManager):
     """
     sm = sensor_manager
     sm.set_random_time()
-    
+
     neighbors = sm.get_neighbors(
         time_window=2,
         n_neighbors_min=3,
         n_neighbors_max=5,
     )
 
-    assert len(neighbors) >= 3, "Número de vizinhos é menor que o mínimo permitido (3)."
-    assert len(neighbors) <= 5, "Número de vizinhos é maior que o máximo permitido (5)."
+    assert len(
+        neighbors) >= 3, "Número de vizinhos é menor que o mínimo permitido (3)."
+    assert len(
+        neighbors) <= 5, "Número de vizinhos é maior que o máximo permitido (5)."
 
 
 def test_sensor_random_time(sensor_manager: SensorManager):
@@ -110,7 +115,8 @@ def test_sensor_position(sensor_manager):
     sm = sensor_manager
     position = sm.get_position()
 
-    assert isinstance(position, tuple), "A posição deve ser retornada como uma tupla."
+    assert isinstance(
+        position, tuple), "A posição deve ser retornada como uma tupla."
     assert (
         len(position) == 2
     ), "A posição deve conter dois valores: latitude e longitude."

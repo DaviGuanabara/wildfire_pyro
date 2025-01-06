@@ -1,11 +1,10 @@
+from ..environments.fixed_sensor_environment import Fixed_Sensor_Environment
+import numpy as np
 import sys
 import os
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
-
-import numpy as np
-from ..environments.fixed_sensor_environment import Fixed_Sensor_Environment
 
 
 # Configurações do ambiente

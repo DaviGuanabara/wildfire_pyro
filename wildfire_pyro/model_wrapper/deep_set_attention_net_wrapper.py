@@ -29,8 +29,10 @@ class EnvironmentManager:
 
         # Inicializa o buffer interno
         self.buffer_size = buffer_size
-        self.observations = torch.zeros((buffer_size,) + self.obs_shape, device=device)
-        self.actions = torch.zeros((buffer_size,) + self.action_shape, device=device)
+        self.observations = torch.zeros(
+            (buffer_size,) + self.obs_shape, device=device)
+        self.actions = torch.zeros(
+            (buffer_size,) + self.action_shape, device=device)
         self.rewards = torch.zeros(buffer_size, device=device)
         self.masks = torch.zeros(buffer_size, device=device)
         self.ground_truth = torch.zeros((buffer_size, 1), device=device)
@@ -49,7 +51,8 @@ class EnvironmentManager:
             return (1,)
         else:
             raise NotImplementedError(
-                f"Espaço de observação {type(observation_space)} não suportado."
+                f"Espaço de observação {
+                    type(observation_space)} não suportado."
             )
 
     @staticmethod
@@ -80,7 +83,8 @@ class EnvironmentManager:
         self.observations[self.pos] = torch.tensor(obs, device=self.device)
         self.actions[self.pos] = torch.tensor(action, device=self.device)
         self.rewards[self.pos] = torch.tensor(reward, device=self.device)
-        self.ground_truth[self.pos] = torch.tensor(ground_truth, device=self.device)
+        self.ground_truth[self.pos] = torch.tensor(
+            ground_truth, device=self.device)
         self.masks[self.pos] = torch.tensor(mask, device=self.device)
 
         self.pos = (self.pos + 1) % self.buffer_size
@@ -95,7 +99,8 @@ class EnvironmentManager:
 
         for _ in range(n_rollout_steps):
             with torch.no_grad():
-                action = neural_network.predict(torch.tensor(obs, device=self.device))
+                action = neural_network.predict(
+                    torch.tensor(obs, device=self.device))
 
             new_obs, reward, done, truncated, info = self.env.step(action)
             ground_truth = info.get("ground_truth", None)
@@ -104,7 +109,8 @@ class EnvironmentManager:
                 print("[Warning] Missing ground_truth. Ending rollout.")
                 break
 
-            self.add_to_buffer(obs, action, reward, ground_truth, 1 - int(done))
+            self.add_to_buffer(obs, action, reward,
+                               ground_truth, 1 - int(done))
             obs = new_obs
 
             if done or truncated:
@@ -169,7 +175,8 @@ class DeepSetAttentionNetWrapper:
         total_loss = 0.0
 
         for _ in range(num_batches):
-            obs, mask, ground_truth = self.env_manager.get_batch(self.batch_size)
+            obs, mask, ground_truth = self.env_manager.get_batch(
+                self.batch_size)
             self.optimizer.zero_grad()
             y_pred = self.neural_network(obs, mask)
             loss = self.loss_func(y_pred, ground_truth)
@@ -184,7 +191,8 @@ class DeepSetAttentionNetWrapper:
         Loop de aprendizado que alterna entre coleta de rollouts e treinamento.
         """
         for _ in range(total_steps // self.n_steps):
-            self.env_manager.collect_rollouts(self.neural_network, self.n_steps)
+            self.env_manager.collect_rollouts(
+                self.neural_network, self.n_steps)
             train_loss = self.train()
             print(f"[INFO] Train Loss: {train_loss:.4f}")
 
@@ -199,7 +207,8 @@ class DeepSetAttentionNetWrapper:
         return action, None
 
 
-def create_model(env, parameters: Dict[str, Any]) -> DeepSetAttentionNetWrapper:
+def create_model(env, parameters: Dict[str, Any]
+                 ) -> DeepSetAttentionNetWrapper:
     """
     Factory function to instantiate the DeepSetAttentionNet model and its wrapper.
 
@@ -226,7 +235,8 @@ def create_model(env, parameters: Dict[str, Any]) -> DeepSetAttentionNetWrapper:
     elif isinstance(env.action_space, spaces.Discrete):
         output_dim = env.action_space.n
     else:
-        raise NotImplementedError(f"Unsupported action space: {type(env.action_space)}")
+        raise NotImplementedError(
+            f"Unsupported action space: {type(env.action_space)}")
 
     # Configurar parâmetros adicionais
     parameters["input_dim"] = input_dim

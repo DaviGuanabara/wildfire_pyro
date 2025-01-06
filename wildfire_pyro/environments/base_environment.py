@@ -48,7 +48,8 @@ class BaseEnvironment(Env, ABC):
         pass
 
     @abstractmethod
-    def step(self, action: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
+    def step(self, action: Any) -> Tuple[Any,
+                                         float, bool, bool, Dict[str, Any]]:
         """
         Executes one time step within the environment.
 
