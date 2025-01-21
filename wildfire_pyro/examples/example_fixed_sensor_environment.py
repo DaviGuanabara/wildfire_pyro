@@ -1,4 +1,4 @@
-from ..environments.fixed_sensor_environment import Fixed_Sensor_Environment
+from wildfire_pyro.environments.fixed_sensor_environment import FixedSensorEnvironment
 import numpy as np
 import sys
 import os
@@ -14,7 +14,7 @@ n_neighbors_min = 2
 n_neighbors_max = 5
 
 # Inicializa o ambiente
-environment = Fixed_Sensor_Environment(
+environment = FixedSensorEnvironment(
     data_path=data_path,
     max_steps=max_steps,
     n_neighbors_min=n_neighbors_min,
