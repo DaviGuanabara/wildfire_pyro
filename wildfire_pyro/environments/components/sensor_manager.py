@@ -22,12 +22,12 @@ class SensorManager:
         self.data = pd.read_csv(data_path)
         self.data = self.data.sort_values(by="t").reset_index(
             drop=True
-        )  
+        )
         self.data["sensor_id"] = self.data.groupby(["lat", "lon"]).ngroup()
         self.sensors = self.data["sensor_id"].unique()
         self.current_sensor = None
         self.data_from_current_sensor = None
-        self.current_time_index = 0 
+        self.current_time_index = 0
 
     def set_random_time(self):
         """
@@ -37,10 +37,12 @@ class SensorManager:
             int: The selected random time index.
         """
         if self.current_sensor is None or self.data_from_current_sensor is None:
-            raise ValueError("No sensor selected. Call `select_sensor()` first.")
+            raise ValueError(
+                "No sensor selected. Call `select_sensor()` first.")
 
         # Randomly select an index within the current sensor's data range
-        self.current_time_index = np.random.randint(len(self.data_from_current_sensor))
+        self.current_time_index = np.random.randint(
+            len(self.data_from_current_sensor))
         return self.current_time_index
 
     def set_random_sensor(self):
@@ -59,19 +61,22 @@ class SensorManager:
         Increment the current time to the next available value for the current sensor.
         """
         if self.current_sensor is None:
-            raise ValueError("No sensor selected. Call `update_sensor()` first.")
+            raise ValueError(
+                "No sensor selected. Call `update_sensor()` first.")
 
         if self.current_time_index + 1 < len(self.data_from_current_sensor):
             self.current_time_index += 1
         else:
-            logging.warning("No more readings available for the current sensor. Sensor will be changed")
+            logging.warning(
+                "No more readings available for the current sensor. Sensor will be changed")
 
             # tempo atual
             current_time = self.data_from_current_sensor.iloc[self.current_time_index]["t"]
             # filtrar sensores a partir desse tempo
             future_data = self.data[self.data["t"] > current_time]
             # ordenar dados pelo tempo
-            future_data = future_data.sort_values(by="t").reset_index(drop=True)
+            future_data = future_data.sort_values(
+                by="t").reset_index(drop=True)
             # escolher o tempo de menor valor dentro do novo conjunto de dados
 
             sensor_id = future_data.iloc[0]["sensor_id"]
@@ -93,13 +98,15 @@ class SensorManager:
             pd.Series: A linha de dados correspondente ao índice de tempo atual, sem 'sensor_id'.
         """
         if self.current_sensor is None:
-            raise ValueError("No sensor selected. Call `update_sensor()` first.")
+            raise ValueError(
+                "No sensor selected. Call `update_sensor()` first.")
 
-        reading = self.data_from_current_sensor.iloc[self.current_time_index].drop('sensor_id')
+        reading = self.data_from_current_sensor.iloc[self.current_time_index].drop(
+            'sensor_id')
         return reading
 
-
-    def get_neighbors(self, n_neighbors_max: int, n_neighbors_min: int = 1, time_window=-1, distance_window = -1):
+    def get_neighbors(self, n_neighbors_max: int,
+                      n_neighbors_min: int = 1, time_window=-1, distance_window=-1):
         """
         Seleciona vizinhos aleatórios para um sensor específico dentro de uma janela de tempo.
 
@@ -110,7 +117,8 @@ class SensorManager:
         :return: DataFrame com os vizinhos selecionados
         """
         if n_neighbors_min > n_neighbors_max:
-            raise ValueError("n_neighbors_min não pode ser maior que n_neighbors_max.")
+            raise ValueError(
+                "n_neighbors_min não pode ser maior que n_neighbors_max.")
 
         step = self.current_time_index
         current_time = self.data_from_current_sensor.iloc[step][self.TIME_TAG]
@@ -129,7 +137,8 @@ class SensorManager:
             windowned_data[self.SENSOR_ID_TAG] != sensor_id
         ]
 
-        possible_neighbors = possible_neighbors_data[self.SENSOR_ID_TAG].unique()
+        possible_neighbors = possible_neighbors_data[self.SENSOR_ID_TAG].unique(
+        )
 
         if len(possible_neighbors) == 0:
             logging.warning("Nenhum sensor disponível para ser vizinho.")
@@ -138,7 +147,8 @@ class SensorManager:
         num_neighbors = np.random.randint(n_neighbors_min, n_neighbors_max + 1)
 
         # Selecionar aleatoriamente os sensores para serem os vizinhos
-        # Se o número de vizinhos for maior que o número de sensores disponíveis, escolher com reposição
+        # Se o número de vizinhos for maior que o número de sensores
+        # disponíveis, escolher com reposição
         neighbor_sensors = np.random.choice(
             possible_neighbors,
             size=num_neighbors,
@@ -153,7 +163,7 @@ class SensorManager:
             neighbor_data = windowned_data[windowned_data[self.SENSOR_ID_TAG] == neighbor_id]
 
             if neighbor_data.empty:
-                continue  
+                continue
 
             random_index = np.random.choice(neighbor_data.index)
             selected_neighbors.append(neighbor_data.loc[random_index])
@@ -179,15 +189,17 @@ class SensorManager:
             tuple: (latitude, longitude) of the current sensor.
         """
         if self.current_sensor is None:
-            raise ValueError("No sensor selected. Call `update_sensor()` first.")
+            raise ValueError(
+                "No sensor selected. Call `update_sensor()` first.")
 
         # A latitude e longitude são constantes para o sensor atual
         lat = self.data_from_current_sensor[self.LATITUDE_TAG].iloc[0]
         lon = self.data_from_current_sensor[self.LONGITUDE_TAG].iloc[0]
         return lat, lon
 
-    #IN DEVELOPMENT
-    def find_sensors_in_region(self, lat_min: float, lat_max: float, lon_min: float, lon_max: float) -> list:
+    # IN DEVELOPMENT
+    def find_sensors_in_region(
+            self, lat_min: float, lat_max: float, lon_min: float, lon_max: float) -> list:
         """
         Encontra sensores dentro de uma região geográfica especificada.
 
@@ -207,5 +219,6 @@ class SensorManager:
             (self.data[self.LONGITUDE_TAG] <= lon_max)
         ]
         sensors_in_region = region_data[self.SENSOR_ID_TAG].unique().tolist()
-        logging.info(f"{len(sensors_in_region)} sensores encontrados na região especificada.")
+        logging.info(
+            f"{len(sensors_in_region)} sensores encontrados na região especificada.")
         return sensors_in_region

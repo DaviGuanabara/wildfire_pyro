@@ -1,5 +1,6 @@
 from torch import Tensor, nn
 
+
 class MLPBlock(nn.Module):
     """
     Basic MLP block with batch normalization, linear layer, optional activation, and optional dropout regularization.
@@ -122,7 +123,8 @@ class MLPphi(nn.Module):
         output_block_3 = self.phi_block_3.forward(input_block_3)
 
         final_output = output_block_3 + input_block_3
-        final_output = final_output.view(batch_size, num_neighbors, self.hidden)
+        final_output = final_output.view(
+            batch_size, num_neighbors, self.hidden)
 
         return final_output
 
@@ -174,7 +176,8 @@ class MLPomega(nn.Module):
 
         self.output_function = nn.Softmax(dim=1)
 
-    def apply_mask(tensor: Tensor, mask: Tensor, mask_value: float = -float("inf")) -> Tensor:
+    def apply_mask(tensor: Tensor, mask: Tensor,
+                   mask_value: float = -float("inf")) -> Tensor:
         """
         Applies a mask to a tensor, setting masked elements to a specific value.
 
@@ -205,7 +208,7 @@ class MLPomega(nn.Module):
 
         # (batch * neighbors, features)
         u_flat = u.reshape(-1, self.features)
-        
+
         input_block_1 = u_flat
         output_block_1 = self.omega_block_1.forward(input_block_1)
 
@@ -215,11 +218,11 @@ class MLPomega(nn.Module):
         input_block_3 = output_block_2 + input_block_2
         output_block_3 = self.omega_block_3.forward(input_block_3)
 
-
         output_block_3_masked = self.apply_mask(output_block_3, mask)
 
         final_output = self.output_function(output_block_3_masked)
-        final_output = final_output.view(batch_size, num_neighbors, self.hidden)
+        final_output = final_output.view(
+            batch_size, num_neighbors, self.hidden)
 
         return final_output
 
@@ -290,9 +293,9 @@ class MLPtheta(nn.Module):
         """
 
         batch_size, num_neighbors, _ = u.shape
-        
+
         # (batch * neighbors, features)
-        u_flat = u.reshape(-1, self.features)  
+        u_flat = u.reshape(-1, self.features)
 
         input_block_1 = u_flat
         output_block_1 = self.theta_block_1.forward(input_block_1)
@@ -307,7 +310,8 @@ class MLPtheta(nn.Module):
         output_block_4 = self.theta_block_4.forward(input_block_4)
 
         final_output = output_block_4
-        final_output = final_output.view(batch_size, num_neighbors, self.hidden)
+        final_output = final_output.view(
+            batch_size, num_neighbors, self.hidden)
 
         return final_output
 
@@ -368,7 +372,8 @@ class DeepSetAttentionNet(nn.Module):
         self.hidden = hidden
         self.prob = prob
 
-    # TODO: I have to find a better way to abstract "observation" to extract "mask" and "u" of it.
+    # TODO: I have to find a better way to abstract "observation" to extract
+    # "mask" and "u" of it.
     def forward(self, observation):
         """
         Forward pass of the DeepSetAttentionNet.
@@ -382,10 +387,10 @@ class DeepSetAttentionNet(nn.Module):
         """
 
         # (batch_size, num_neighbors, input_dim)
-        u = observation[:, :, : self.input_dim]  
+        u = observation[:, :, : self.input_dim]
 
         # (batch_size, num_neighbors)
-        mask = observation[:, :, self.input_dim]  
+        mask = observation[:, :, self.input_dim]
 
         batch_size, num_neighbors, _ = u.shape
 

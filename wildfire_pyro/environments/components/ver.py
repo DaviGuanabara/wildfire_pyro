@@ -22,7 +22,8 @@ neighbor_sensors = np.random.choice(sensors, size=num_neighbors, replace=False)
 # Criar uma lista para armazenar os vizinhos escolhidos
 selected_neighbors = []
 
-# Iterar sobre os sensores selecionados e escolher aleatoriamente uma leitura de cada um
+# Iterar sobre os sensores selecionados e escolher aleatoriamente uma
+# leitura de cada um
 for sensor_id in neighbor_sensors:
     # Filtrar os dados do sensor atual
     sensor_data = data[data["sensor_id"] == sensor_id]

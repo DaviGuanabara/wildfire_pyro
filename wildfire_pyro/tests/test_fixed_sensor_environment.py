@@ -33,9 +33,9 @@ def test_initialization(fixed_sensor_env):
 
 """
 def test_reset(fixed_sensor_env):
-    
+
     #Testa o método reset para verificar se retorna observações válidas.
-    
+
     env = fixed_sensor_env
     observation, info = env.reset()
     assert isinstance(
@@ -49,8 +49,6 @@ def test_reset(fixed_sensor_env):
         len(observation[1]) == env.n_neighbors_max
     ), "O mask deve ter tamanho igual ao número máximo de vizinhos."
 """
-
-import numpy as np
 
 
 def test_step(fixed_sensor_env):
@@ -88,7 +86,8 @@ def test_step(fixed_sensor_env):
 
     # assert isinstance(u_matrix, tuple), "Observação após step deve ser uma tupla."
     # assert isinstance(reward, float), "Recompensa deve ser um número float."
-    assert isinstance(terminated, bool), "Terminado deve ser um valor booleano."
+    assert isinstance(
+        terminated, bool), "Terminado deve ser um valor booleano."
     assert "ground_truth" in info, "As informações devem conter 'ground_truth'."
 
     current_time_index = env.sensor_manager.current_time_index

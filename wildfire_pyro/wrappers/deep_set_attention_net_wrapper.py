@@ -40,7 +40,8 @@ class ReplayBuffer:
         self.action_shape = action_shape
 
         # Initialize tensors to store transitions
-        self.observations = torch.zeros((max_size,) + observation_shape, device=device)
+        self.observations = torch.zeros(
+            (max_size,) + observation_shape, device=device)
         self.actions = torch.zeros((max_size,) + action_shape, device=device)
         self.ground_truth = torch.zeros((max_size, 1), device=device)
 
@@ -149,7 +150,8 @@ class EnvDataCollector:
         self.buffer = buffer
         self.device = device
 
-    def collect_rollouts(self, neural_network: torch.nn.Module, n_rollout_steps: int):
+    def collect_rollouts(
+            self, neural_network: torch.nn.Module, n_rollout_steps: int):
         """
         Collects rollouts from the environment and stores them in the buffer.
 
@@ -161,8 +163,10 @@ class EnvDataCollector:
 
         for _ in range(n_rollout_steps):
             with torch.no_grad():
-                obs_tensor = torch.tensor(obs, device=self.device, dtype=torch.float32)
-                y_pred: torch.Tensor = neural_network(obs_tensor)  # (1, output_dim)
+                obs_tensor = torch.tensor(
+                    obs, device=self.device, dtype=torch.float32)
+                y_pred: torch.Tensor = neural_network(
+                    obs_tensor)  # (1, output_dim)
                 action: np.ndarray = y_pred.cpu().numpy().squeeze(0)  # (output_dim,)
 
             ground_truth: Optional[float] = info.get("ground_truth", None)
@@ -249,7 +253,7 @@ class LearningManager:
         # (batch_size, num_neighbors, feature_dim)
         observations = observations.to(self.device)
         # (batch_size, 1)
-        ground_truths = ground_truths.to(self.device)  
+        ground_truths = ground_truths.to(self.device)
 
         self.optimizer.zero_grad()
 
@@ -276,7 +280,8 @@ class LearningManager:
         """
         steps_completed = 0
         while steps_completed < total_steps:
-            current_rollout_steps = min(rollout_steps, total_steps - steps_completed)
+            current_rollout_steps = min(
+                rollout_steps, total_steps - steps_completed)
             self.data_collector.collect_rollouts(
                 neural_network=self.neural_network,
                 n_rollout_steps=current_rollout_steps,
@@ -299,26 +304,28 @@ class LearningManager:
         """
 
         # Set the network to evaluation mode
-        self.neural_network.eval()  
+        self.neural_network.eval()
         with torch.no_grad():
             # Convert observation to tensor and move to the correct device
-            obs_tensor = torch.tensor(obs, dtype=torch.float32, device=self.device)
+            obs_tensor = torch.tensor(
+                obs, dtype=torch.float32, device=self.device)
             expected_obs_shape = self.environment.observation_space.shape
             is_batch = len(obs_tensor.shape) == len(expected_obs_shape) + 1
 
             # Add batch dimension if not in batch format
             if not is_batch:
                 # (1, num_neighbors, feature_dim)
-                obs_tensor = obs_tensor.unsqueeze(0)  
+                obs_tensor = obs_tensor.unsqueeze(0)
 
             # (batch_size, output_dim)
-            action_tensor = self.neural_network(obs_tensor) 
+            action_tensor = self.neural_network(obs_tensor)
             action = action_tensor.cpu().numpy()
 
-            # If input was not in batch, remove the batch dimension from the output
+            # If input was not in batch, remove the batch dimension from the
+            # output
             if not is_batch:
                 # (output_dim,)
-                action = action.squeeze(0)  
+                action = action.squeeze(0)
 
         # Return action(s) and an empty dictionary for additional information
         return action, {}
@@ -351,7 +358,8 @@ def create_model(env: Any, parameters: Dict[str, Any]) -> LearningManager:
     elif isinstance(env.action_space, spaces.Discrete):
         output_dim = env.action_space.n
     else:
-        raise NotImplementedError(f"Unsupported action space: {type(env.action_space)}")
+        raise NotImplementedError(
+            f"Unsupported action space: {type(env.action_space)}")
 
     # Configure additional parameters
     parameters["input_dim"] = input_dim

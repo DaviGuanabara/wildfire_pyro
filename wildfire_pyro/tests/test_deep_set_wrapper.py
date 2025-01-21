@@ -91,7 +91,8 @@ def test_replay_buffer_sample_batch():
         )
         assert torch.equal(actions[i], torch.tensor([i], dtype=torch.float32))
         assert torch.equal(
-            ground_truth_batch[i], torch.tensor([float(i)], dtype=torch.float32)
+            ground_truth_batch[i], torch.tensor(
+                [float(i)], dtype=torch.float32)
         )
 
 
@@ -220,7 +221,8 @@ def test_replay_buffer_multiple_cycles():
     for i in range(batch_size):
         assert torch.equal(
             observations2[i],
-            torch.tensor([i + batch_size, i + batch_size + 1], dtype=torch.float32),
+            torch.tensor([i + batch_size, i + batch_size + 1],
+                         dtype=torch.float32),
         )
         assert torch.equal(
             actions2[i], torch.tensor([i + batch_size], dtype=torch.float32)
@@ -258,17 +260,21 @@ def test_collect_rollouts_success():
     mock_nn = Mock()
     device = "cpu"
 
-    # Mock environment.reset() to return initial observation and info with ground_truth
+    # Mock environment.reset() to return initial observation and info with
+    # ground_truth
     initial_obs = np.array([0.0, 1.0, 2.0])
     mock_env.reset.return_value = (initial_obs, {"ground_truth": 0.5})
 
     # Mock neural_network.predict to return a valid action
     predicted_action = np.array([1.0])
-    mock_nn.predict.return_value = torch.tensor(predicted_action, dtype=torch.float32)
+    mock_nn.predict.return_value = torch.tensor(
+        predicted_action, dtype=torch.float32)
 
-    # Mock environment.step to return new observation, reward, done, truncated, and info
+    # Mock environment.step to return new observation, reward, done,
+    # truncated, and info
     new_obs = np.array([1.0, 2.0, 3.0])
-    mock_env.step.return_value = (new_obs, 1.0, False, False, {"ground_truth": 1.0})
+    mock_env.step.return_value = (
+        new_obs, 1.0, False, False, {"ground_truth": 1.0})
 
     collector = EnvDataCollector(
         environment=mock_env, buffer=mock_buffer, device=device
@@ -281,7 +287,8 @@ def test_collect_rollouts_success():
     # Verify
     expected_calls = [
         call.reset(),
-        call.predict(torch.tensor(initial_obs, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            initial_obs, device=device, dtype=torch.float32)),
         call.add(initial_obs, predicted_action, 0.5),
         call.step(predicted_action),
         call.reset(),
@@ -295,10 +302,12 @@ def test_collect_rollouts_success():
     # Adjusting expected_calls accordingly
     expected_calls = [
         call.reset(),
-        call.predict(torch.tensor(initial_obs, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            initial_obs, device=device, dtype=torch.float32)),
         call.add(initial_obs, predicted_action, 0.5),
         call.step(predicted_action),
-        call.predict(torch.tensor(new_obs, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            new_obs, device=device, dtype=torch.float32)),
         call.add(new_obs, predicted_action, 1.0),
         call.step(predicted_action),
     ]
@@ -308,7 +317,8 @@ def test_collect_rollouts_success():
     # Verify buffer.add called twice
     assert mock_buffer.add.call_count == 2
     mock_buffer.add.assert_has_calls(
-        [call(initial_obs, predicted_action, 0.5), call(new_obs, predicted_action, 1.0)]
+        [call(initial_obs, predicted_action, 0.5),
+         call(new_obs, predicted_action, 1.0)]
     )
 
 
@@ -322,7 +332,8 @@ def test_collect_rollouts_missing_ground_truth():
     mock_nn = Mock()
     device = "cpu"
 
-    # Mock environment.reset() to return initial observation and info without ground_truth
+    # Mock environment.reset() to return initial observation and info without
+    # ground_truth
     initial_obs = np.array([0.0, 1.0, 2.0])
     mock_env.reset.return_value = (initial_obs, {})
 
@@ -364,13 +375,15 @@ def test_collect_rollouts_episode_termination():
     mock_nn = Mock()
     device = "cpu"
 
-    # Mock environment.reset() to return initial observation and info with ground_truth
+    # Mock environment.reset() to return initial observation and info with
+    # ground_truth
     initial_obs = np.array([0.0, 1.0, 2.0])
     mock_env.reset.return_value = (initial_obs, {"ground_truth": 0.5})
 
     # Mock neural_network.predict to return a valid action
     predicted_action = np.array([1.0])
-    mock_nn.predict.return_value = torch.tensor(predicted_action, dtype=torch.float32)
+    mock_nn.predict.return_value = torch.tensor(
+        predicted_action, dtype=torch.float32)
 
     # Define side effects for environment.step
     # First step: not done
@@ -393,10 +406,12 @@ def test_collect_rollouts_episode_termination():
     # After second step, done=True, so it should reset
     expected_calls = [
         call.reset(),
-        call.predict(torch.tensor(initial_obs, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            initial_obs, device=device, dtype=torch.float32)),
         call.add(initial_obs, predicted_action, 0.5),
         call.step(predicted_action),
-        call.predict(torch.tensor(new_obs, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            new_obs, device=device, dtype=torch.float32)),
         call.add(new_obs, predicted_action, 1.0),
         call.step(predicted_action),
         call.reset(),
@@ -407,7 +422,8 @@ def test_collect_rollouts_episode_termination():
     # Verify buffer.add called twice
     assert mock_buffer.add.call_count == 2
     mock_buffer.add.assert_has_calls(
-        [call(initial_obs, predicted_action, 0.5), call(new_obs, predicted_action, 1.0)]
+        [call(initial_obs, predicted_action, 0.5),
+         call(new_obs, predicted_action, 1.0)]
     )
 
 
@@ -430,17 +446,20 @@ def test_collect_rollouts_buffer_overflow():
         ),
     ]
 
-    # Mock environment.reset() to return initial observation and info with ground_truth
+    # Mock environment.reset() to return initial observation and info with
+    # ground_truth
     initial_obs = np.array([0.0, 1.0, 2.0])
     mock_env.reset.return_value = (initial_obs, {"ground_truth": 0.5})
 
     # Mock neural_network.predict to return a valid action
     predicted_action = np.array([1.0])
-    mock_nn.predict.return_value = torch.tensor(predicted_action, dtype=torch.float32)
+    mock_nn.predict.return_value = torch.tensor(
+        predicted_action, dtype=torch.float32)
 
     # Mock environment.step to always return done=False
     new_obs = np.array([1.0, 2.0, 3.0])
-    mock_env.step.return_value = (new_obs, 1.0, False, False, {"ground_truth": 1.0})
+    mock_env.step.return_value = (
+        new_obs, 1.0, False, False, {"ground_truth": 1.0})
 
     collector = EnvDataCollector(
         environment=mock_env, buffer=mock_buffer, device=device
@@ -470,7 +489,8 @@ def test_collect_rollouts_multiple_rollouts():
     mock_nn = Mock()
     device = "cpu"
 
-    # Mock environment.reset() to return different observations and ground_truth
+    # Mock environment.reset() to return different observations and
+    # ground_truth
     initial_obs_1 = np.array([0.0, 1.0, 2.0])
     initial_info_1 = {"ground_truth": 0.5}
     initial_obs_2 = np.array([10.0, 11.0, 12.0])
@@ -494,8 +514,10 @@ def test_collect_rollouts_multiple_rollouts():
     new_obs_1 = np.array([1.0, 2.0, 3.0])
     new_obs_2 = np.array([11.0, 12.0, 13.0])
     mock_env.step.side_effect = [
-        (new_obs_1, 1.0, False, False, {"ground_truth": 1.0}),  # First rollout step
-        (new_obs_2, 2.0, False, False, {"ground_truth": 2.0}),  # Second rollout step
+        (new_obs_1, 1.0, False, False, {
+         "ground_truth": 1.0}),  # First rollout step
+        # Second rollout step
+        (new_obs_2, 2.0, False, False, {"ground_truth": 2.0}),
     ]
 
     collector = EnvDataCollector(
@@ -509,10 +531,12 @@ def test_collect_rollouts_multiple_rollouts():
     # Verify first rollout
     expected_calls_first = [
         call.reset(),
-        call.predict(torch.tensor(initial_obs_1, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            initial_obs_1, device=device, dtype=torch.float32)),
         call.add(initial_obs_1, predicted_action_1, 0.5),
         call.step(predicted_action_1),
-        call.predict(torch.tensor(new_obs_1, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            new_obs_1, device=device, dtype=torch.float32)),
         call.add(new_obs_1, predicted_action_1, 1.0),
         call.step(predicted_action_1),
     ]
@@ -524,10 +548,12 @@ def test_collect_rollouts_multiple_rollouts():
     # Verify second rollout
     expected_calls_second = [
         call.reset(),
-        call.predict(torch.tensor(initial_obs_2, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            initial_obs_2, device=device, dtype=torch.float32)),
         call.add(initial_obs_2, predicted_action_2, 5.0),
         call.step(predicted_action_2),
-        call.predict(torch.tensor(new_obs_2, device=device, dtype=torch.float32)),
+        call.predict(torch.tensor(
+            new_obs_2, device=device, dtype=torch.float32)),
         call.add(new_obs_2, predicted_action_2, 2.0),
         call.step(predicted_action_2),
     ]
@@ -608,7 +634,8 @@ def test_learning_manager_train_with_full_buffer():
 
     mock_neural_network = Mock()
     mock_neural_network.parameters.return_value = [Mock()]
-    mock_neural_network.return_value = torch.tensor([1.0, 2.0], dtype=torch.float32)
+    mock_neural_network.return_value = torch.tensor(
+        [1.0, 2.0], dtype=torch.float32)
 
     parameters = {
         "device": "cpu",
@@ -627,7 +654,8 @@ def test_learning_manager_train_with_full_buffer():
     manager.buffer.size = Mock(return_value=2)
     manager.buffer.sample_batch = Mock(
         return_value=(
-            torch.tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=torch.float32),
+            torch.tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+                         dtype=torch.float32),
             torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32),
             torch.tensor([[0.5], [1.5]], dtype=torch.float32),
         )
@@ -741,7 +769,8 @@ def test_learning_manager_learn():
     manager.buffer.size = Mock(return_value=2)
     manager.buffer.sample_batch = Mock(
         return_value=(
-            torch.tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=torch.float32),
+            torch.tensor([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+                         dtype=torch.float32),
             torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32),
             torch.tensor([[0.5], [1.5]], dtype=torch.float32),
         )
@@ -789,7 +818,8 @@ def test_learning_manager_predict():
 
     mock_neural_network = Mock()
     mock_neural_network.eval = Mock()
-    mock_neural_network.return_value = torch.tensor([0.5, 1.5], dtype=torch.float32)
+    mock_neural_network.return_value = torch.tensor(
+        [0.5, 1.5], dtype=torch.float32)
 
     parameters = {
         "device": "cpu",
