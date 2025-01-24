@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 
 # Configurações do ambiente
-data_path = "path/to/your/dataset.csv"
+data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_project\\workspace\\wildfire_pyro\\examples\\data\\synthetic\\fixed_sensor\\fixed_test.csv"
 max_steps = 20
 n_neighbors_min = 2
 n_neighbors_max = 5
@@ -21,31 +21,41 @@ environment = FixedSensorEnvironment(
     n_neighbors_max=n_neighbors_max,
 )
 
+print(environment.sensor_manager.sensors)
 # Reinicia o ambiente para começar um novo episódio
+print("\n=== Iniciando novo episódio ===")
 observation, info = environment.reset()
-print("Initial Observation:", observation)
-print("Initial Ground Truth:", info["ground_truth"])
+print(">> Observação inicial:")
+print(observation)
+print(">> Ground Truth inicial:", info["ground_truth"])
 
 # Simula uma interação de agente com o ambiente
-for step in range(max_steps):
-    print(f"\n--- Step {step + 1} ---")
+for step in range(1, max_steps + 1):
+    print(f"\n--- Passo {step}/{max_steps} ---")
 
     # Escolha de ação (simulada aleatoriamente aqui)
     action = np.array([np.random.uniform(-1, 1)])
-    print("Action:", action)
+    print(f">> Ação escolhida: {action[0]:.4f}")
 
     # Executa o passo no ambiente
     observation, reward, terminated, truncated, info = environment.step(action)
 
-    # Exibe os resultados do passo
-    print("Observation:", observation)
-    print("Reward:", reward)
-    print("Terminated:", terminated)
-    print("Truncated:", truncated)
+    # Exibe os resultados formatados
+    print("\n>> Observação recebida (vizinhos selecionados):")
+    for idx, row in enumerate(observation):
+        if np.any(row):  # Exibe apenas as linhas preenchidas
+            print(f"  Vizinho {idx + 1}: {row}")
+    
+    print(f">> Recompensa recebida: {reward:.4f}")
+    print(f">> Episódio terminado? {'Sim' if terminated else 'Não'}")
+    print(f">> Episódio truncado? {'Sim' if truncated else 'Não'}")
+    print(f">> Ground Truth atual: {info['ground_truth']:.4f}")
+
+    print(environment.sensor_manager.current_sensor)
 
     if terminated:
-        print("Episode terminated.")
+        print("\n[INFO] O episódio foi encerrado.")
         break
 
-# Encerrar o ambiente (se necessário para liberar recursos)
+print("\n=== Simulação concluída ===")
 environment.close()

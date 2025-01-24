@@ -9,27 +9,6 @@ class BaseEnvironment(Env, ABC):
     Child classes must implement the abstract methods and properties.
     """
 
-    @property
-    @abstractmethod
-    def observation_space(self) -> spaces.Space:
-        """
-        The observation space of the environment.
-
-        Returns:
-            spaces.Space: The observation space.
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def action_space(self) -> spaces.Space:
-        """
-        The action space of the environment.
-
-        Returns:
-            spaces.Space: The action space.
-        """
-        pass
 
     @abstractmethod
     def reset(
