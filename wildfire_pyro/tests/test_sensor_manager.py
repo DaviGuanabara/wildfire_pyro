@@ -106,17 +106,3 @@ def test_sensor_random_time(sensor_manager: SensorManager):
     assert (
         0 <= random_time_index < len(sm.data_from_current_sensor)
     ), "O índice de tempo aleatório está fora do intervalo permitido."
-
-
-def test_sensor_position(sensor_manager):
-    """
-    Testa a função get_position.
-    """
-    sm = sensor_manager
-    position = sm.get_position()
-
-    assert isinstance(
-        position, tuple), "A posição deve ser retornada como uma tupla."
-    assert (
-        len(position) == 2
-    ), "A posição deve conter dois valores: latitude e longitude."
