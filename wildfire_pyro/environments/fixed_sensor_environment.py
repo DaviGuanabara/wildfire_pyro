@@ -87,14 +87,19 @@ class FixedSensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[np.ndarray, float, bool, bool, dict]: Observação, recompensa, terminated, truncated, informações.
         """
+        
+        #a ação foi gerada dada a última leitura do sensor, assim a comparação com o ground_truth
+        #deve ser feita antes da atualização do sensor
+        reward = self._calculate_reward(action, self.ground_truth)
+        
         self.current_step += 1
-        self.sensor_manager.increment_time()
+        self.sensor_manager.set_random_sensor()
 
         observation, ground_truth = self._generate_observation()
 
         self.ground_truth = ground_truth
 
-        reward = self._calculate_reward(action, ground_truth)
+        
         terminated = self._is_terminated()
         truncated = False  # Pode ser ajustado conforme a lógica do ambiente
 
@@ -103,8 +108,26 @@ class FixedSensorEnvironment(BaseEnvironment):
             reward,
             terminated,
             truncated,
-            {"ground_truth": ground_truth},
+            {"ground_truth": ground_truth, "sensor": self._sensor_info()},
         )
+        
+    def _sensor_info(self) -> dict:
+
+
+        lat, lon = self.sensor_manager.get_current_sensor_position()
+        sensor_id = self.sensor_manager.current_sensor
+        sensor_t = self.sensor_manager.get_current_sensor_time()
+
+        sensor_info = {
+            "lat": round(lat, 4),
+            "lon": round(lon, 4),
+            "t": round(sensor_t, 4),
+            "sensor_id": sensor_id,
+            
+        }
+
+        return sensor_info
+
 
     def _calculate_reward(self, action: np.ndarray,
                           ground_truth: float) -> float:

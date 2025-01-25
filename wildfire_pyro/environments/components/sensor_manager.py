@@ -62,7 +62,7 @@ class SensorManager:
         """
         if self.current_sensor is None:
             raise ValueError(
-                "No sensor selected. Call `update_sensor()` first.")
+                "No sensor selected. Call `set_random_sensor()` first.")
 
         if self.current_time_index + 1 < len(self.data_from_current_sensor):
             self.current_time_index += 1
@@ -99,7 +99,7 @@ class SensorManager:
         """
         if self.current_sensor is None:
             raise ValueError(
-                "No sensor selected. Call `update_sensor()` first.")
+                "No sensor selected. Call `set_random_sensor()` first.")
 
         reading = self.data_from_current_sensor.iloc[self.current_time_index].drop(
             'sensor_id')
@@ -181,7 +181,7 @@ class SensorManager:
 
         return neighbors_df
 
-    def get_position(self):
+    def get_current_sensor_position(self):
         """
         Get the latitude and longitude of the current sensor.
 
@@ -190,12 +190,27 @@ class SensorManager:
         """
         if self.current_sensor is None:
             raise ValueError(
-                "No sensor selected. Call `update_sensor()` first.")
+                "No sensor selected. Call `set_random_sensor()` first.")
 
         # A latitude e longitude são constantes para o sensor atual
         lat = self.data_from_current_sensor[self.LATITUDE_TAG].iloc[0]
         lon = self.data_from_current_sensor[self.LONGITUDE_TAG].iloc[0]
         return lat, lon
+    
+    def get_current_sensor_time(self):
+        """
+        Obtém o tempo atual do sensor com base no índice de tempo atual.
+
+        Returns:
+            float: O tempo atual correspondente ao índice de tempo do sensor selecionado.
+        """
+        if self.current_sensor is None:
+            raise ValueError("Nenhum sensor selecionado. Chame `set_random_sensor()` primeiro.")
+
+        # Obtendo o valor do tempo com base no índice de tempo atual
+        current_time = self.data_from_current_sensor[self.TIME_TAG].iloc[self.current_time_index]
+        return current_time
+
 
     # IN DEVELOPMENT
     def find_sensors_in_region(
