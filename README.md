@@ -1,5 +1,22 @@
 # Spatio-Temporal Data Analysis and Simulation Framework
 
+## Installation
+
+
+You will need **Python 3.12**.
+
+Go to the root folder of the project (the folder that contains the file `pyproject.toml`), and execute:
+
+```bash
+$ pip install .
+```
+
+To test, go to the folder wildfire_pyro/examples and execute:
+
+```bash
+$ python fixed_sensor_environment_example.py
+```
+
 ## Overview
 This project focuses on spatiotemporal machine learning using deep sets of random neighbors with attention mechanisms. The main objective is to simulate, analyze, and predict spatiotemporal phenomena based on sparse data collected through fixed or mobile sensors. This framework adheres to the conventions of **Farama Gymnasium**.
 
