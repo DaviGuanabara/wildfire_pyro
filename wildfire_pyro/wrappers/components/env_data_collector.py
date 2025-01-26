@@ -34,8 +34,7 @@ class EnvDataCollector:
         self.buffer = buffer
         self.device = device
 
-    def collect_rollouts(
-            self, neural_network: torch.nn.Module, n_rollout_steps: int):
+    def collect_rollouts(self, neural_network: torch.nn.Module, n_rollout_steps: int):
         """
         Collects rollouts from the environment and stores them in the buffer.
 
@@ -45,11 +44,21 @@ class EnvDataCollector:
         """
         obs, info = self.environment.reset()
 
-        for _ in range(n_rollout_steps):
+        for step in range(n_rollout_steps):
+
+            if self.buffer.is_full():
+                self.buffer.reset()
+
             with torch.no_grad():
-                obs_tensor = torch.tensor(obs, device=self.device, dtype=torch.float32).unsqueeze(0)
+
                 # (1, output_dim)
-                y_pred: torch.Tensor = neural_network(obs_tensor)  
+                obs_tensor = torch.tensor(
+                    obs, device=self.device, dtype=torch.float32
+                ).unsqueeze(0)
+
+                # TODO: NÃO PRECISO PEGAR O ACTION. ISSO PODE ATÉ DEIXAR O CÓDIGO MAIS RÁPIDO
+                # MAS COMO SERIA A VALIDAÇÃO ?
+                y_pred: torch.Tensor = neural_network(obs_tensor)
                 action: np.ndarray = y_pred.cpu().numpy().squeeze(0)  # (output_dim,)
 
             ground_truth: Optional[float] = info.get("ground_truth", None)
@@ -60,7 +69,8 @@ class EnvDataCollector:
 
             self.buffer.add(obs, action, ground_truth)
 
-            obs, reward, done, truncated, info = self.environment.step(action)
-            
-            if done or truncated:
+            obs, reward, terminated, truncated, info = self.environment.step(action)
+
+            if terminated or truncated:
+                # print("environment reseted")
                 obs, info = self.environment.reset()

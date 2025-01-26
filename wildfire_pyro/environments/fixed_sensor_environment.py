@@ -76,8 +76,7 @@ class FixedSensorEnvironment(BaseEnvironment):
 
         return observation, {"ground_truth": self.ground_truth}
 
-    def step(
-            self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, dict]:
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """
         Executa um passo no ambiente.
 
@@ -87,11 +86,11 @@ class FixedSensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[np.ndarray, float, bool, bool, dict]: Observação, recompensa, terminated, truncated, informações.
         """
-        
-        #a ação foi gerada dada a última leitura do sensor, assim a comparação com o ground_truth
-        #deve ser feita antes da atualização do sensor
+
+        # a ação foi gerada dada a última leitura do sensor, assim a comparação com o ground_truth
+        # deve ser feita antes da atualização do sensor
         reward = self._calculate_reward(action, self.ground_truth)
-        
+
         self.current_step += 1
         self.sensor_manager.set_random_sensor()
 
@@ -99,7 +98,6 @@ class FixedSensorEnvironment(BaseEnvironment):
 
         self.ground_truth = ground_truth
 
-        
         terminated = self._is_terminated()
         truncated = False  # Pode ser ajustado conforme a lógica do ambiente
 
@@ -110,9 +108,8 @@ class FixedSensorEnvironment(BaseEnvironment):
             truncated,
             {"ground_truth": ground_truth, "sensor": self._sensor_info()},
         )
-        
-    def _sensor_info(self) -> dict:
 
+    def _sensor_info(self) -> dict:
 
         lat, lon = self.sensor_manager.get_current_sensor_position()
         sensor_id = self.sensor_manager.current_sensor
@@ -123,14 +120,11 @@ class FixedSensorEnvironment(BaseEnvironment):
             "lon": round(lon, 4),
             "t": round(sensor_t, 4),
             "sensor_id": sensor_id,
-            
         }
 
         return sensor_info
 
-
-    def _calculate_reward(self, action: np.ndarray,
-                          ground_truth: float) -> float:
+    def _calculate_reward(self, action: np.ndarray, ground_truth: float) -> float:
         """
         Calcula a recompensa para o passo atual.
 
@@ -154,8 +148,8 @@ class FixedSensorEnvironment(BaseEnvironment):
             bool: True se o episódio deve terminar, False caso contrário.
         """
         if self.current_step >= self.max_steps:
-            logging.info(
-                "Número máximo de passos alcançado. Episódio terminando.")
+            # logging.info(
+            #    "Número máximo de passos alcançado. Episódio terminando.")
             return True
         return False
 
@@ -176,8 +170,7 @@ class FixedSensorEnvironment(BaseEnvironment):
             distance_window=-1,
         )
 
-        u_matrix, mask, ground_truth = self._prepare_features(
-            neighbors, target_row)
+        u_matrix, mask, ground_truth = self._prepare_features(neighbors, target_row)
 
         # Concatenar u_matrix e mask horizontalmente
         # u_matrix: (n_neighbors_max, 4)

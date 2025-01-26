@@ -45,7 +45,7 @@ class MLPBlock(nn.Module):
             torch.Tensor: Output tensor after batch normalization, linear transformation,
             activation (if applicable), and dropout (if applicable).
         """
-            
+
         x = self.batch_norm(x) if x.size(0) > 1 else x
         x = self.linear(x)
         x = self.activation(x) if self.activation is not None else x
@@ -124,8 +124,7 @@ class MLPphi(nn.Module):
         output_block_3 = self.phi_block_3.forward(input_block_3)
 
         final_output = output_block_3 + input_block_3
-        final_output = final_output.view(
-            batch_size, num_neighbors, self.hidden)
+        final_output = final_output.view(batch_size, num_neighbors, self.hidden)
 
         return final_output
 
@@ -177,8 +176,9 @@ class MLPomega(nn.Module):
 
         self.output_function = nn.Softmax(dim=1)
 
-    def apply_mask(self, tensor: Tensor, mask: Tensor,
-                   mask_value: float = -float("inf")) -> Tensor:
+    def apply_mask(
+        self, tensor: Tensor, mask: Tensor, mask_value: float = -1e9  # -float("inf")
+    ) -> Tensor:
         """
         Applies a mask to a tensor, setting masked elements to a specific value.
 
@@ -190,13 +190,17 @@ class MLPomega(nn.Module):
         Returns:
             torch.Tensor: The tensor with the mask applied.
         """
-        # Adjust to make sure dimensions align
-        mask = mask.transpose(0, 1)  
 
-        # Expand mask to match the dimensions of the tensor
-        mask = mask.expand_as(tensor)
-            
-        return tensor.masked_fill(mask == 0, mask_value)
+        # [batch_size, num_neighbors] -> [batch_size * num_neighbors]
+        mask_flat = mask.view(-1)
+
+        # [batch_size * num_neighbors, 1]
+        mask_flat = mask_flat.unsqueeze(1)
+
+        # [batch_size * num_neighbors, hidden]
+        mask_expanded = mask_flat.expand(-1, tensor.size(1))
+
+        return tensor.masked_fill(mask_expanded == 0, mask_value)
 
     def forward(self, u, mask):
         """
@@ -209,6 +213,7 @@ class MLPomega(nn.Module):
             torch.Tensor: Output tensor of shape (batch_size, num_neighbors, hidden),
             containing normalized attention weights.
         """
+
         batch_size, num_neighbors, _ = u.shape
 
         # (batch * neighbors, features)
@@ -226,8 +231,7 @@ class MLPomega(nn.Module):
         output_block_3_masked = self.apply_mask(output_block_3, mask)
 
         final_output = self.output_function(output_block_3_masked)
-        final_output = final_output.view(
-            batch_size, num_neighbors, self.hidden)
+        final_output = final_output.view(batch_size, num_neighbors, self.hidden)
 
         return final_output
 
@@ -393,11 +397,12 @@ class DeepSetAttentionNet(nn.Module):
         u = observation[:, :, : self.input_dim]
 
         # (batch_size, num_neighbors)
-        mask = observation[:, :, -1] 
+        mask = observation[:, :, -1]
 
         batch_size, num_neighbors, _ = u.shape
 
         output_mlp_phi = self.mlp_phi.forward(u)
+
         output_mlp_omega = self.mlp_omega.forward(u, mask)
 
         weighted_features = output_mlp_phi * output_mlp_omega
