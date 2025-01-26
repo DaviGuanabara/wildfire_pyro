@@ -1,4 +1,4 @@
-from wildfire_pyro.wrappers.deep_set_attention_net_wrapper import ReplayBuffer, EnvDataCollector, LearningManager
+from wildfire_pyro.wrappers.learning_manager import ReplayBuffer, EnvDataCollector, LearningManager
 import numpy as np
 import pytest
 import torch
