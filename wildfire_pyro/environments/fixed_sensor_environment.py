@@ -56,6 +56,7 @@ class FixedSensorEnvironment(BaseEnvironment):
             low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
         )
 
+    # TODO: O SEED DEVE SER AJUSTADO CORRETAMENTE.
     def reset(
         self, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> Tuple[np.ndarray, dict]:
@@ -163,6 +164,9 @@ class FixedSensorEnvironment(BaseEnvironment):
         target_row = self.sensor_manager.get_reading()
         logging.debug(f"target row: {target_row}")
 
+        #TODO: EU TÔ PEGANDO OS VIZINHOS E JÁ JOGANDO COMO OBSERVAÇÃO.
+        #PORÉM, ERA PARA ESTAR GERANDO OS DELTAS DOS VIZINHOS, E AÍ JOGAR NA OBSERVAÇÃO.
+        
         neighbors = self.sensor_manager.get_neighbors(
             n_neighbors_max=self.n_neighbors_max,
             n_neighbors_min=self.n_neighbors_min,

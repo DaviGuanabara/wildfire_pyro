@@ -43,6 +43,7 @@ parameters = {
     "batch_size": 128,  # Tamanho do batch para treinamento
 }
 
+#TODO: BUSCAR UM NOME MELHOR PARA O CREATE_MODEL, PQ AFINAL, ELE GERA O MODELO DENTRO DE UM WRAPPER.
 # Função que cria o modelo e o gerenciador de aprendizado
 deep_set = create_model(environment, parameters)
 
@@ -50,6 +51,8 @@ deep_set = create_model(environment, parameters)
 # Definição do número total de passos de treinamento e passos por rollout
 total_steps = 10000
 
+# TODO: Adicionar SEED no reset.
+environment.reset()
 # Executa o processo de aprendizagem
 # TODO: ADICIONAR VALIDAÇÃO PARA ACOMPANHAR TREINAMENTO
 # TODO: ADICIONAR CALLBACKS DO SB3
@@ -59,7 +62,9 @@ print("aprendizagem concluída")
 # Teste de inferência após o treinamento
 
 # TODO: ADICIONAR TESTES COM O ARQUIVO DE TESTE
+# TODO: O Treinamento, seguindo o arquigo, segue um bootstrap de 20 conjuntos de vizinhos (ou seja, 20 observações.)
 for _ in range(5):
+    #TODO: ESSE RESET AQUI NÃO DEVERIA ESTAR AQUI. DEVERIA SER O STEP
     observation, info = environment.reset()
     action, _ = deep_set.predict(observation)
     print("Ação prevista:", action, "Ground truth:", info["ground_truth"])
