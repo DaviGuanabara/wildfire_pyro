@@ -26,29 +26,33 @@ environment = FixedSensorEnvironment(
 )
 
 
-print("\n=== Iniciando novo episódio ===")
+print("\n=== Starting new episode  ===")
 observation, info = environment.reset()
 
-for step in range(1, max_steps + 1):
-    print("\n")
-    print(f"--- Passo {step}/{max_steps} ---")
+for step in range(1, 5):
+    
 
-    # Escolha de ação
+    # Agent's action	
     action = np.array([np.random.uniform(-1, 1)])
+    error = action.item() - info['ground_truth']
+    print(f">> Action taken: {action.item():.4f}, Error: {error:.4f}")
 
-    # Executa a ação no ambiente
+    
     observation, reward, terminated, truncated, info = environment.step(action)
-
-    print(f">> Sensor em avaliação (sensor id = {info['sensor']['sensor_id']}) - Latitude: {info['sensor']['lat']:.4f}, Longitude: {info['sensor']['lon']:.4f}")
-    print(f">> Ground Truth do sensor {info['sensor']['sensor_id']} no tempo {info['sensor']['t']:.4f}: {info['ground_truth']:.4f}")
+    
+    print("\n")
+    print(f"--- Step {step}/{max_steps} ---")
+    print(f">> Sensor under evaluation (sensor id = {info['sensor']['sensor_id']}) - Latitude: {info['sensor']['lat']:.4f}, Longitude: {info['sensor']['lon']:.4f}")
+    print(f">> Ground Truth of sensor {info['sensor']['sensor_id']} no tempo {info['sensor']['t']:.4f}: {info['ground_truth']:.4f}")
+    
 
     for idx, row in enumerate(observation):
         rounded_row = np.around(row, decimals=4)
-        is_valid = "Válido" if np.any(row) else "Inválido"
-        print(f"  Vizinho {idx + 1} ({is_valid}): {rounded_row}")
+        is_valid = "Valid" if np.any(row) else "Invalid"
+        print(f"    Delta Neighbor  {idx + 1} ({is_valid}): {rounded_row}")
 
     if terminated:
-        print("\n[INFO] O episódio foi encerrado.")
+        print("\n The episode has ended.")
         break
 
 environment.close()

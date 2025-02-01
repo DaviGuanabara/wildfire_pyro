@@ -56,7 +56,6 @@ class FixedSensorEnvironment(BaseEnvironment):
             low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
         )
 
-    # TODO: O SEED DEVE SER AJUSTADO CORRETAMENTE.
     def reset(
         self, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> Tuple[np.ndarray, dict]:
@@ -71,75 +70,68 @@ class FixedSensorEnvironment(BaseEnvironment):
             Tuple[np.ndarray, dict]: Observação inicial e informações adicionais.
         """
         self.current_step = 0
-        self.sensor_manager.set_random_sensor()
+        
+        self.sensor_manager.reset(seed)
 
         observation, self.ground_truth = self._generate_observation()
 
-        return observation, {"ground_truth": self.ground_truth}
+        return observation, {"ground_truth": self.ground_truth, "sensor": self._sensor_info()}
 
+    #TODO: a ação deve mesmo ser um array ?
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """
-        Executa um passo no ambiente.
+        A step in the environment.
 
         Args:
-            action (np.ndarray): A ação tomada pelo agente.
+            action (np.ndarray): Action taken by the agent.
 
         Returns:
-            Tuple[np.ndarray, float, bool, bool, dict]: Observação, recompensa, terminated, truncated, informações.
+            Tuple[np.ndarray, float, bool, bool, dict]: Observation, reward, terminated, truncated, info.
         """
-
-        # a ação foi gerada dada a última leitura do sensor, assim a comparação com o ground_truth
-        # deve ser feita antes da atualização do sensor
-        reward = self._calculate_reward(action, self.ground_truth)
-
+        
+        
+        
         self.current_step += 1
-        self.sensor_manager.set_random_sensor()
+        self.sensor_manager.step()
 
-        observation, ground_truth = self._generate_observation()
-
-        self.ground_truth = ground_truth
+        observation, self.ground_truth = self._generate_observation()
+        reward = self._calculate_reward()
 
         terminated = self._is_terminated()
-        truncated = False  # Pode ser ajustado conforme a lógica do ambiente
-
+        truncated = False 
+        
         return (
             observation,
             reward,
             terminated,
             truncated,
-            {"ground_truth": ground_truth, "sensor": self._sensor_info()},
+            {"ground_truth": self.ground_truth, "sensor": self._sensor_info()},
         )
 
     def _sensor_info(self) -> dict:
+        """
+        Retrieves information about the current sensor.
 
-        lat, lon = self.sensor_manager.get_current_sensor_position()
-        sensor_id = self.sensor_manager.current_sensor
-        sensor_t = self.sensor_manager.get_current_sensor_time()
+        Returns:
+            dict: Contains latitude, longitude, timestamp, and sensor ID.
+        """
+        sensor_id = self.sensor_manager.state_tracker["current_sensor"]
+        current_index = self.sensor_manager.state_tracker["current_time_index"]
+        sensor_data = self.sensor_manager.cache["data_from_current_sensor"].iloc[current_index]
 
         sensor_info = {
-            "lat": round(lat, 4),
-            "lon": round(lon, 4),
-            "t": round(sensor_t, 4),
+            "lat": round(sensor_data[self.sensor_manager.LATITUDE_TAG], 4),
+            "lon": round(sensor_data[self.sensor_manager.LONGITUDE_TAG], 4),
+            "t": round(sensor_data[self.sensor_manager.TIME_TAG], 4),
             "sensor_id": sensor_id,
         }
 
         return sensor_info
 
-    def _calculate_reward(self, action: np.ndarray, ground_truth: float) -> float:
-        """
-        Calcula a recompensa para o passo atual.
 
-        Args:
-            action (np.ndarray): Ação tomada pelo agente.
-            ground_truth (float): Valor de ground truth.
+    def _calculate_reward(self) -> float:
 
-        Returns:
-            float: Recompensa calculada.
-        """
-        error = np.abs(action[0] - ground_truth)
-        reward = -error
-        logging.debug(f"Recompensa calculada: {reward} (Erro: {error})")
-        return float(reward)
+        return None
 
     def _is_terminated(self) -> bool:
         """
@@ -161,31 +153,39 @@ class FixedSensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[np.ndarray, float]: Observação com shape (n_neighbors_max, 5) e ground truth.
         """
-        target_row = self.sensor_manager.get_reading()
-        logging.debug(f"target row: {target_row}")
+        # Obtém os deltas dos vizinhos já processados
+        deltas = self.sensor_manager.get_neighbors_deltas(self.n_neighbors_max, self.n_neighbors_min)
 
-        #TODO: EU TÔ PEGANDO OS VIZINHOS E JÁ JOGANDO COMO OBSERVAÇÃO.
-        #PORÉM, ERA PARA ESTAR GERANDO OS DELTAS DOS VIZINHOS, E AÍ JOGAR NA OBSERVAÇÃO.
-        
-        neighbors = self.sensor_manager.get_neighbors(
-            n_neighbors_max=self.n_neighbors_max,
-            n_neighbors_min=self.n_neighbors_min,
-            time_window=3 * np.pi,
-            distance_window=-1,
-        )
+        # Criação da matriz de observação (n_neighbors_max, 4)
+        #TODO: Esse hardcoded 4 é o tamanho do vetor de deltas. Deveria ser um parâmetro
+        #retirado da própria classe SensorManager, da base de dados.
+        observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
+        mask = np.zeros(self.n_neighbors_max, dtype=bool)
 
-        u_matrix, mask, ground_truth = self._prepare_features(neighbors, target_row)
+        # Preenche a matriz com os deltas existentes
+        num_neighbors = len(deltas)
+        observation_matrix[:num_neighbors, :] = deltas.values
+        mask[:num_neighbors] = True  # Vizinhos reais
 
-        # Concatenar u_matrix e mask horizontalmente
-        # u_matrix: (n_neighbors_max, 4)
-        # mask: (n_neighbors_max,)
-        # Reshape mask para (n_neighbors_max, 1) antes da concatenação
-        observation = np.hstack(
-            (u_matrix, mask.reshape(-1, 1).astype(np.float32))
-        )  # (n_neighbors_max, 5)
+        # Concatena a máscara à matriz de observação
+        observation = np.hstack((observation_matrix, mask.reshape(-1, 1).astype(np.float32)))
+
+        # Obtém o ground truth do SensorManager
+        ground_truth = self.sensor_manager.get_ground_truth()
 
         return observation, ground_truth
 
+
+
+
+
+
+
+
+
+
+
+    
     def _prepare_features(
         self, neighbors: pd.DataFrame, target_row: pd.Series
     ) -> Tuple[np.ndarray, np.ndarray, float]:
