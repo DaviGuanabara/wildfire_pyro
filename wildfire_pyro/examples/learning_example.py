@@ -1,92 +1,117 @@
 import os
 import torch
-from wildfire_pyro.environments.fixed_sensor_environment import FixedSensorEnvironment
-from wildfire_pyro.factories.model_factory import (
-    create_deep_set_attention_net as create_model,
+import numpy as np
+from wildfire_pyro.environments.sensor_environment import SensorEnvironment
+from wildfire_pyro.factories.agent_factory import (
+    create_deep_set_agent,
 )
-
 
 print("Learning Example está em construção")
 
 
 def get_path(file_name):
-    # Caminho do arquivo de teste
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     relative_path = os.path.join("data", "synthetic", "fixed_sensor", file_name)
     data_path = os.path.join(SCRIPT_DIR, relative_path)
     return data_path
 
-train_data = get_path("fixed_train.csv")
-test_data = get_path("fixed_test.csv")
 
-# Configurações do ambiente
+
+# ==================================================================================================
+# SETUP
+# Configurações do ambiente de treinamento e teste
+# Configurações do agente DeepSet
+# ==================================================================================================
+
+
+seed = 0
 max_steps = 200000
 n_neighbors_min = 2
 n_neighbors_max = 5
 
-# Inicializa o ambiente
-# TODO: adicioanr uma flag para que eu deixe o número de steps com o tamanho da base de dados.
-train_environment = FixedSensorEnvironment(
+train_data = get_path("fixed_train.csv")
+test_data = get_path("fixed_test.csv")
+
+total_training_steps = 1000
+n_bootstrap = 20  
+
+agent_parameters = {
+    "lr": 0.1,  
+    "device": "cuda" if torch.cuda.is_available() else "cpu",  
+    "dropout_prob": 0.2,  
+    "hidden": 64,  
+    "batch_size": 128,  
+}
+
+
+train_environment = SensorEnvironment(
     data_path=train_data,
     max_steps=max_steps,
     n_neighbors_min=n_neighbors_min,
     n_neighbors_max=n_neighbors_max,
 )
 
-
-test_environment = FixedSensorEnvironment(
+test_environment = SensorEnvironment(
     data_path=test_data,
     max_steps=max_steps,
     n_neighbors_min=n_neighbors_min,
     n_neighbors_max=n_neighbors_max,
 )
 
+deep_set = create_deep_set_agent(train_environment, agent_parameters)
 
 
-# Configurações para a rede neural e o treinamento
-parameters = {
-    "lr": 0.1,  # Taxa de aprendizado
-    "device": "cuda" if torch.cuda.is_available() else "cpu",  # Device para treinamento
-    "dropout_prob": 0.2,  # Probabilidade de dropout na rede neural
-    "hidden": 64,  # Neurônios na camada oculta
-    "batch_size": 128,  # Tamanho do batch para treinamento
-}
-
-#TODO: BUSCAR UM NOME MELHOR PARA O CREATE_MODEL, PQ AFINAL, ELE GERA O MODELO DENTRO DE UM WRAPPER.
-# Função que cria o modelo e o gerenciador de aprendizado
-deep_set = create_model(train_environment, parameters)
-
-
-# Definição do número total de passos de treinamento e passos por rollout
-total_steps = 10000
-
-# TODO: Adicionar SEED no reset.
-seed = 0
-train_environment.reset(seed)
+# ==================================================================================================
+# LEARNING
 # Executa o processo de aprendizagem
 # TODO: ADICIONAR VALIDAÇÃO PARA ACOMPANHAR TREINAMENTO
+# TODO: ADICIONAR MÉTRICAS DE APRENDIZAGEM
 # TODO: ADICIONAR CALLBACKS DO SB3
-deep_set.learn(total_steps)
+# ==================================================================================================
+
+train_environment.reset(seed)
+deep_set.learn(total_training_steps)
 
 train_environment.close()
-print("aprendizagem concluída")
+print("Aprendizagem concluída")
 
-# Teste de inferência após o treinamento
-# TODO: O Treinamento, seguindo o arquigo, segue um bootstrap de 20 conjuntos de vizinhos (ou seja, 20 observações.)
+
+# ==================================================================================================
+# INFERENCE
+# Teste de inferência após o treinamento com Bootstrap
+# O treinamento segue a ideia de gerar N conjuntos de vizinhos para estimar a incerteza.
+# ==================================================================================================
+
+print("\n=== Iniciando avaliação com Bootstrap ===")
 observation, info = test_environment.reset()
-for _ in range(5):
-    
-    
-    action, _ = deep_set.predict(observation)
-    error = action.item() - info['ground_truth']
-    print(f">> Action taken: {action.item():.4f}, Error: {error:.4f}")
-    
-    observation, reward, terminated, truncated, info = test_environment.step(action)
-    print("Ação prevista:", action, "Ground truth:", info["ground_truth"])
+print(f">> Sensor em avaliação (ID: {info['sensor']['sensor_id']})")
+print(f"   Latitude: {info['sensor']['lat']:.4f}, Longitude: {info['sensor']['lon']:.4f}")
+print(f">> Ground Truth: {info['ground_truth']:.4f}")
 
-# Não se esqueça de fechar o ambiente para liberar recursos
+
+for step in range(2):
+    
+    bootstrap_observations, ground_truth = test_environment.get_bootstrap_observations(n_bootstrap)
+    
+    # Para cada bootstrap sample, o modelo faz uma previsão.
+    predictions = []
+    for obs in bootstrap_observations:
+        action, _ = deep_set.predict(obs)
+        predictions.append(action.item())
+    
+    mean_prediction = np.mean(predictions)
+    std_prediction = np.std(predictions)
+    error = mean_prediction - ground_truth
+    print(f"\n--- Step {step} ---")
+    print(f">> Bootstrap: Mean Prediction: {mean_prediction:.4f}, Std: {std_prediction:.4f}, Error: {error:.4f}")
+    
+    # Avança para o próximo sensor
+    final_prediction = np.array([mean_prediction])
+    observation, reward, terminated, truncated, info = test_environment.step(final_prediction)
+    print(f">> Próximo sensor: ID: {info['sensor']['sensor_id']}, Ground Truth: {info['ground_truth']:.4f}")
+    
+    if terminated:
+        print("\nO episódio terminou.")
+        break
+
 test_environment.close()
-
-
-
-

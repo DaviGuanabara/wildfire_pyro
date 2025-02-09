@@ -11,7 +11,7 @@ from wildfire_pyro.environments.base_environment import BaseEnvironment
 logging.basicConfig(level=logging.INFO)
 
 
-class FixedSensorEnvironment(BaseEnvironment):
+class SensorEnvironment(BaseEnvironment):
     def __init__(
         self,
         data_path: str,
@@ -28,7 +28,7 @@ class FixedSensorEnvironment(BaseEnvironment):
             n_neighbors_min (int): Número mínimo de vizinhos.
             n_neighbors_max (int): Número máximo de vizinhos.
         """
-        super(FixedSensorEnvironment, self).__init__()
+        super(SensorEnvironment, self).__init__()
 
         self.max_steps = max_steps
         self.n_neighbors_min = n_neighbors_min
@@ -175,57 +175,67 @@ class FixedSensorEnvironment(BaseEnvironment):
 
         return observation, ground_truth
 
-
-
-
-
-
-
-
-
-
-
-    
-    def _prepare_features(
-        self, neighbors: pd.DataFrame, target_row: pd.Series
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
-        """
-        Prepara a matriz de observação (u_matrix), a máscara e o ground truth.
-
-        Args:
-            neighbors (pd.DataFrame): DataFrame com os vizinhos selecionados.
-            target_row (pd.Series): Linha de dados do sensor alvo.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray, float]: u_matrix, mask e ground_truth.
-                - u_matrix: (n_neighbors_max, 4)
-                - mask: (n_neighbors_max,)
-                - ground_truth: float
-        """
-        u_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
-        mask = np.zeros(self.n_neighbors_max, dtype=bool)
-
-        for i in range(self.n_neighbors_max):
-            if i < len(neighbors):
-                neighbor = neighbors.iloc[i]
-                u_matrix[i, :] = [
-                    neighbor["lat"] - target_row["lat"],
-                    neighbor["lon"] - target_row["lon"],
-                    neighbor["t"] - target_row["t"],
-                    neighbor["y"],
-                ]
-                mask[i] = True
-            else:
-                # Preencher com zeros para vizinhos inexistentes
-                u_matrix[i, :] = [0.0, 0.0, 0.0, 0.0]
-                mask[i] = False
-
-        ground_truth = target_row["y"]
-
-        return u_matrix, mask, ground_truth
-
     def close(self):
         """
         Fecha o ambiente.
         """
         pass
+    
+    # UPDATE ─────────────────────────────────────────────────────
+    def get_bootstrap_observations(self, n_bootstrap: int) -> Tuple[list, float]:
+        """
+        Generates a list of observations using bootstrap neighbor deltas and returns a single ground truth value.
+        
+        For each bootstrap sample, the SensorManager's get_bootstrap_neighbors_deltas method is used to 
+        obtain a delta DataFrame. An observation matrix is built from each delta DataFrame by:
+        - Creating a feature matrix of shape (n_neighbors_max, 4), where available delta values are placed
+            in the upper rows.
+        - Creating a boolean mask of length n_neighbors_max (True for rows with data, False for padded rows).
+        - Horizontally stacking the feature matrix and the mask (converted to float) to produce an observation
+            of shape (n_neighbors_max, 5).
+        
+        Since the target sensor is locked, the ground truth is computed once and is identical for all samples.
+        
+        Args:
+            n_bootstrap (int): Number of bootstrap samples to generate.
+        
+        Returns:
+            Tuple[list, float]:
+                - A list of observation matrices (each with shape (n_neighbors_max, 5)).
+                - A single ground truth value from the target sensor.
+        """
+        # Obtain the bootstrap neighbor deltas and the ground truth from the sensor manager.
+        bootstrap_deltas, ground_truth = self.sensor_manager.get_bootstrap_neighbors_deltas(
+            n_bootstrap=n_bootstrap,
+            n_neighbors_max=self.n_neighbors_max,
+            n_neighbors_min=self.n_neighbors_min,
+            time_window=-1,        # Adjust if needed.
+            distance_window=-1,    # Currently unused.
+            force_recompute=False
+        )
+        
+        observations = []
+        
+        # For each bootstrap sample, build the observation.
+        for deltas in bootstrap_deltas:
+            # Create an empty feature matrix and a mask.
+            observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
+            mask = np.zeros(self.n_neighbors_max, dtype=bool)
+            
+            # Get the number of available neighbors in this sample.
+            num_neighbors = len(deltas)
+            
+            # Fill in the feature matrix with the available delta values.
+            if num_neighbors > 0:
+                observation_matrix[:num_neighbors, :] = deltas.values
+            
+            # Mark the positions corresponding to real neighbors.
+            mask[:num_neighbors] = True
+            
+            # Stack the feature matrix and mask to form the final observation.
+            # The mask is converted to float (1.0 for True, 0.0 for False).
+            observation = np.hstack((observation_matrix, mask.reshape(-1, 1).astype(np.float32)))
+            observations.append(observation)
+        
+        return observations, ground_truth
+

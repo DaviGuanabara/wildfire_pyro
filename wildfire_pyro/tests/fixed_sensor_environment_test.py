@@ -1,13 +1,13 @@
 import os
 import numpy as np
 import pytest
-from wildfire_pyro.environments.fixed_sensor_environment import FixedSensorEnvironment
+from wildfire_pyro.environments.sensor_environment import SensorEnvironment
 
 
 @pytest.fixture(scope="module")
 def fixed_sensor_env():
     """
-    Fixture para criar e configurar o ambiente FixedSensorEnvironment.
+    Fixture para criar e configurar o ambiente SensorEnvironment.
     """
     data_path = os.path.abspath(
         os.path.join(
@@ -15,7 +15,7 @@ def fixed_sensor_env():
             "data/synthetic/fixed_sensor/fixed.csv",
         )
     )
-    env = FixedSensorEnvironment(data_path)
+    env = SensorEnvironment(data_path)
     yield env
     env.close()
 

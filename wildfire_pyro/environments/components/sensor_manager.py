@@ -1,8 +1,11 @@
+from typing import Tuple
 import pandas as pd
 import numpy as np
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("SensorManager")
+logger.setLevel(logging.INFO)
+
 
 
 class SensorManager:
@@ -45,14 +48,17 @@ class SensorManager:
             "deltas_step": -1,        # Último passo em que deltas foram calculados
             "current_time_index": 0,   # Índice de tempo atual
             "current_sensor": None,   # Sensor atual
+            "bootstrap_neighbors_step": -1  
         }
 
+        
         self.cache = {
             "neighbors": None,                # Dados calculados dos vizinhos
             "deltas": None,                   # Dados calculados dos deltas
             "data_from_current_sensor": None, # Dados do sensor atual
             "current_reading": None,          # Novo: armazena a leitura atual do sensor
-            "ground_truth": None              # Novo: armazena o ground truth diretamente
+            "ground_truth": None,              # Novo: armazena o ground truth diretamente
+            "bootstrap_neighbors": None
 
         }
         
@@ -165,7 +171,7 @@ class SensorManager:
         candidate_neighbors = self._filter_candidates(timestamp, time_window, sensor_id)
 
         if candidate_neighbors.empty:
-            logging.warning("Nenhum sensor disponível para ser vizinho.")
+            logger.info("No neighbors found for the sensor {sensor_id}.")
             return pd.DataFrame([])
 
         # Selecionar aleatoriamente os vizinhos
@@ -240,7 +246,8 @@ class SensorManager:
 
             # Add sensor to the "no neighbors" list and log the update
             self.sensors_without_neighbors.add(current_sensor_id)
-            logging.info(f"Sensors without enough neighbors: {sorted(self.sensors_without_neighbors)}")
+            logger.info(
+                f"Sensors without enough neighbors: {sorted(self.sensors_without_neighbors)}")
 
             self.step()  # Move to the next sensor
 
@@ -346,6 +353,101 @@ class SensorManager:
             (self.data[self.LONGITUDE_TAG] <= lon_max)
         ]
         sensors_in_region = region_data[self.SENSOR_ID_TAG].unique().tolist()
-        logging.info(
+        logger.info(
             f"{len(sensors_in_region)} sensores encontrados na região especificada.")
         return sensors_in_region
+
+    # UPDATE ─────────────────────────────────────────────────────
+    def get_bootstrap_neighbors(self, n_bootstrap: int = 20,
+                            n_neighbors_max: int = 5, n_neighbors_min: int = 2,
+                            time_window: int = -1, distance_window: int = -1,
+                            force_recompute: bool = False) -> list:
+        """
+        For a locked sensor, generate multiple sets of neighbors (e.g., 20 sets) using the
+        underlying random selection. This method bypasses the standard caching used in
+        get_neighbors so that each call can return a different set.
+
+        Args:
+            n_bootstrap (int): Number of neighbor sets to generate.
+            n_neighbors_max (int): Maximum number of neighbors.
+            n_neighbors_min (int): Minimum number of neighbors.
+            time_window (int): Time window for neighbor search.
+            distance_window (int): Distance window (unused currently).
+            force_recompute (bool): If True, regenerate even if cached.
+
+        Returns:
+            list: A list of pd.DataFrame objects, each containing a set of neighbors.
+        """
+        current_step = self.state_tracker["current_step"]
+        
+        # Check if bootstrap neighbors exist and correspond to the current step.
+        if (not force_recompute and 
+            self.cache.get("bootstrap_neighbors") is not None and 
+            self.cache.get("bootstrap_neighbors_step") == current_step):
+            return self.cache["bootstrap_neighbors"]
+
+        bootstrap_neighbors = []
+        # Loop to generate n_bootstrap different neighbor sets.
+        for _ in range(n_bootstrap):
+            # Call _compute_neighbors directly (bypassing the cache in get_neighbors)
+            neighbors = self._compute_neighbors(n_neighbors_min, n_neighbors_max, time_window)
+            bootstrap_neighbors.append(neighbors)
+
+        # Store the generated neighbor sets and the current step in the cache.
+        self.cache["bootstrap_neighbors"] = bootstrap_neighbors
+        self.cache["bootstrap_neighbors_step"] = current_step
+
+        return bootstrap_neighbors
+    
+    def get_bootstrap_neighbors_deltas(
+    self,
+    n_bootstrap: int = 20,
+    n_neighbors_max: int = 5,
+    n_neighbors_min: int = 2,
+    time_window: int = -1,
+    distance_window: int = -1,
+    force_recompute: bool = False
+) -> Tuple[list, float]:
+        """
+        For a locked sensor, generate multiple sets of neighbor deltas using bootstrap.
+        
+        This method calculates the deltas for each bootstrap neighbor set (using the target sensor as reference)
+        and returns a list of delta DataFrames along with a single ground truth value (the 'y' of the target sensor).
+        
+        Args:
+            n_bootstrap (int): Number of bootstrap samples to generate.
+            n_neighbors_max (int): Maximum number of neighbors.
+            n_neighbors_min (int): Minimum number of neighbors.
+            time_window (int): Time window for neighbor search.
+            distance_window (int): Distance window (unused currently).
+            force_recompute (bool): If True, force regeneration even if cached.
+        
+        Returns:
+            Tuple[list, float]:
+                - A list of pd.DataFrame objects, each containing the computed deltas for one bootstrap sample.
+                - A single ground truth value corresponding to the target sensor's 'y' value.
+        """
+        # Retrieve the target sensor data (the sensor remains locked until the next step)
+        target_sensor = self.get_current_sensor_data()
+        ground_truth = target_sensor["y"]
+
+        # Get a list of bootstrap neighbor sets
+        bootstrap_neighbors_list = self.get_bootstrap_neighbors(
+            n_bootstrap=n_bootstrap,
+            n_neighbors_max=n_neighbors_max,
+            n_neighbors_min=n_neighbors_min,
+            time_window=time_window,
+            distance_window=distance_window,
+            force_recompute=force_recompute
+        )
+        
+        bootstrap_deltas = []
+        # For each bootstrap neighbor set, compute the deltas with the target sensor as reference
+        for neighbors in bootstrap_neighbors_list:
+            deltas = self._compute_deltas(neighbors, target_sensor)
+            bootstrap_deltas.append(deltas)
+        
+        return bootstrap_deltas, ground_truth
+
+
+    # ────────────────────────────────────────────────────────────────────────
