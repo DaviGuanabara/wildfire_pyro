@@ -361,7 +361,7 @@ class SensorManager:
     def get_bootstrap_neighbors(self, n_bootstrap: int = 20,
                             n_neighbors_max: int = 5, n_neighbors_min: int = 2,
                             time_window: int = -1, distance_window: int = -1,
-                            force_recompute: bool = False) -> list:
+                            force_recompute: bool = True) -> list:
         """
         For a locked sensor, generate multiple sets of neighbors (e.g., 20 sets) using the
         underlying random selection. This method bypasses the standard caching used in
@@ -406,7 +406,7 @@ class SensorManager:
     n_neighbors_min: int = 2,
     time_window: int = -1,
     distance_window: int = -1,
-    force_recompute: bool = False
+    force_recompute: bool = True
 ) -> Tuple[list, float]:
         """
         For a locked sensor, generate multiple sets of neighbor deltas using bootstrap.
