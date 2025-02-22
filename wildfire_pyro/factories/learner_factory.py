@@ -6,10 +6,10 @@ from gymnasium import spaces
 
 from wildfire_pyro.models.deep_set_attention_net import DeepSetAttentionNet
 from wildfire_pyro.environments.base_environment import BaseEnvironment
-from wildfire_pyro.wrappers.learning_manager import LearningManager
+from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager, BaseLearningManager
 
 
-def create_deep_set_agent(env: BaseEnvironment, parameters: Dict[str, Any]) -> LearningManager:
+def create_deep_set_learner(env: BaseEnvironment, parameters: Dict[str, Any]) -> BaseLearningManager:
     """
     Factory function to instantiate the DeepSetAttentionNet model and its LearningManager.
 
@@ -52,7 +52,7 @@ def create_deep_set_agent(env: BaseEnvironment, parameters: Dict[str, Any]) -> L
     ).to(parameters.get("device", "cpu"))
 
     # Instantiate the LearningManager with buffer size equal to batch_size
-    learning_manager = LearningManager(
+    learning_manager = SupervisedLearningManager(
         neural_network=neural_network,
         environment=env,
         parameters=parameters,

@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 from wildfire_pyro.environments.sensor_environment import SensorEnvironment
-from wildfire_pyro.factories.agent_factory import (
+from wildfire_pyro.factories.learner_factory import (
     create_deep_set_agent,
 )
 
