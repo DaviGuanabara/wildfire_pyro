@@ -17,6 +17,8 @@
 # all copies or substantial portions of the Software.
 # ========================================================================================
 
+import tempfile
+
 import os
 import platform
 import random
@@ -29,7 +31,7 @@ from typing import Optional, Union, Iterable
 from collections import deque
 
 import cloudpickle
-from wildfire_pyro.common.logger import Logger
+from wildfire_pyro.common.logger import Logger, make_output_format
 
 # Check if tensorboard is available for PyTorch
 try:
@@ -150,24 +152,35 @@ def configure_logger(verbose: int = 0, tensorboard_log: Optional[str] = None, tb
     :param reset_num_timesteps: Whether to reset timestep count.
     :return: Logger instance.
     """
-    save_path, format_strings = None, ["stdout"]
+    save_path = None
+    format_strings = ["stdout"]
 
     if tensorboard_log is not None and SummaryWriter is None:
         raise ImportError(
-            "TensorBoard logging requires `pip install tensorboard`.")
+            "TensorBoard logging requires `pip install tensorboard`."
+        )
 
     if tensorboard_log is not None and SummaryWriter is not None:
         latest_run_id = get_latest_run_id(tensorboard_log, tb_log_name)
         if not reset_num_timesteps:
             latest_run_id -= 1
         save_path = os.path.join(
-            tensorboard_log, f"{tb_log_name}_{latest_run_id + 1}")
+            tensorboard_log, f"{tb_log_name}_{latest_run_id + 1}"
+        )
         format_strings = [
             "stdout", "tensorboard"] if verbose >= 1 else ["tensorboard"]
-    elif verbose == 0:
-        format_strings = [""]
+    else:
+        # Ensure `save_path` is not None to prevent errors in `make_output_format()`
+        save_path = tempfile.gettempdir()  # Uses the system's temporary directory
 
-    return Logger(save_path, format_strings=format_strings)
+    # Ensure `save_path` exists
+    os.makedirs(save_path, exist_ok=True)
+
+    output_formats = [make_output_format(
+        fmt, save_path) for fmt in format_strings]
+
+    return Logger(save_path, output_formats=output_formats)
+
 
 
 def safe_mean(arr: Union[np.ndarray, list, deque]) -> float:

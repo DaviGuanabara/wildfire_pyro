@@ -122,6 +122,20 @@ class BaseCallback(ABC):
         pass
 
 
+class NoneCallback(BaseCallback):
+
+    def __init__(self, callback: Optional[Callable[[dict[str, Any], dict[str, Any]], bool]] = None, verbose: int = 0):
+        super().__init__(verbose)
+        
+    def _on_step(self) -> bool:
+        """
+        Called at every step. Returning False stops training.
+        """
+        return True
+
+
+
+
 class CallbackList(BaseCallback):
     """
     Handles multiple callbacks in sequence.

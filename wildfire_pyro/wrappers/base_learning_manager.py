@@ -11,7 +11,13 @@ import torch
 import wildfire_pyro.common.logger as logger
 from wildfire_pyro.common.utils import obs_as_tensor, safe_mean
 from wildfire_pyro.common import utils
-from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback
+
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback, NoneCallback
+
 
 
 class BaseLearningManager:
@@ -53,25 +59,40 @@ class BaseLearningManager:
 
         self._custom_logger = False
 
-    def _init_callback(self, callback, progress_bar: bool = False) -> BaseCallback:
+    def _init_callback(
+        self,
+        callback=None,
+        progress_bar: bool = False,
+    ):
         """
-        Initializes the callback.
+        Initializes the callback(s).
 
-        :param callback: Callback(s) called at every step.
+        :param callback: Callback(s) to be called at each step.
         :param progress_bar: Whether to display a progress bar.
         :return: A combined callback.
         """
+        # Delayed import to avoid circular import
+        from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback, NoneCallback
+
+        if callback is None:
+            callback = NoneCallback()  # Default empty callback
+
+        # Convert list of callbacks to a CallbackList
         if isinstance(callback, list):
             callback = CallbackList(callback)
+
+        # Convert functional callback to object
         if not isinstance(callback, BaseCallback):
             callback = ConvertCallback(callback)
+
+        # Add progress bar if needed
         if progress_bar:
             callback = CallbackList([callback, ProgressBarCallback()])
 
         callback.init_callback(self)
         return callback
 
-    def collect_rollouts(self, neural_network: torch.nn.Module, n_rollout_steps: int, callback: BaseCallback) -> bool:
+    def collect_rollouts(self, neural_network: torch.nn.Module, n_rollout_steps: int, callback: "BaseCallback") -> bool:
         """
         Collects rollouts from the environment and stores them in the buffer.
 
@@ -144,13 +165,13 @@ class BaseLearningManager:
         callback = self._init_callback(callback, progress_bar)
         return total_timesteps, callback
 
-    def learn(self, total_steps: int, callback=None):
+    def learn(self, total_steps: int, callback=None, progress_bar: bool = False):
         """
         Main learning loop.
         Alternates between collecting rollouts and training the neural network.
         """
         total_timesteps, callback = self._setup_learn(
-            total_steps, callback=callback)
+            total_steps, callback=callback, progress_bar=progress_bar)
 
         callback.on_training_start(locals(), globals())
 

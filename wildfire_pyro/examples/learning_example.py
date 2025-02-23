@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from wildfire_pyro.environments.sensor_environment import SensorEnvironment
 from wildfire_pyro.factories.learner_factory import (
-    create_deep_set_agent,
+    create_deep_set_learner,
 )
 
 print("Learning Example está em construção")
@@ -58,7 +58,7 @@ test_environment = SensorEnvironment(
     n_neighbors_max=n_neighbors_max,
 )
 
-deep_set = create_deep_set_agent(train_environment, agent_parameters)
+deep_set = create_deep_set_learner(train_environment, agent_parameters)
 
 
 # ==================================================================================================
@@ -70,7 +70,7 @@ deep_set = create_deep_set_agent(train_environment, agent_parameters)
 # ==================================================================================================
 
 train_environment.reset(seed)
-deep_set.learn(total_training_steps)
+deep_set.learn(total_training_steps, progress_bar=True)
 
 train_environment.close()
 print("Aprendizagem concluída")

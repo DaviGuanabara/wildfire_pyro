@@ -25,18 +25,6 @@ class SupervisedLearningManager(BaseLearningManager):
             self.neural_network.parameters(), lr=parameters.get("lr", 1e-3)
         )
         self.loss_func = torch.nn.MSELoss()
-
-
-    
-
-
-        
-    def learn(self, total_steps: int):
-        """
-        Main learning loop.
-        Alternates between collecting rollouts and training the neural network.
-        """
-        super().learn(total_steps)
         
     def predict(
         self, obs: np.ndarray, deterministic: bool = True
