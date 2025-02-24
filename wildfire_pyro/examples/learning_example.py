@@ -6,6 +6,8 @@ from wildfire_pyro.factories.learner_factory import (
     create_deep_set_learner,
 )
 
+from wildfire_pyro.common.callbacks import EvalCallback
+
 print("Learning Example está em construção")
 
 
@@ -30,6 +32,7 @@ n_neighbors_min = 2
 n_neighbors_max = 5
 
 train_data = get_path("fixed_train.csv")
+validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
 total_training_steps = 1000
@@ -51,6 +54,14 @@ train_environment = SensorEnvironment(
     n_neighbors_max=n_neighbors_max,
 )
 
+validation_environment = SensorEnvironment(
+    data_path=validation_data,
+    max_steps=max_steps,
+    n_neighbors_min=n_neighbors_min,
+    n_neighbors_max=n_neighbors_max,
+)
+
+
 test_environment = SensorEnvironment(
     data_path=test_data,
     max_steps=max_steps,
@@ -58,7 +69,15 @@ test_environment = SensorEnvironment(
     n_neighbors_max=n_neighbors_max,
 )
 
+
+eval_callback = EvalCallback(validation_environment, best_model_save_path="./logs/",
+                             log_path="./logs/", eval_freq=500,)
+
+
 deep_set = create_deep_set_learner(train_environment, agent_parameters)
+
+
+
 
 
 # ==================================================================================================
@@ -70,7 +89,7 @@ deep_set = create_deep_set_learner(train_environment, agent_parameters)
 # ==================================================================================================
 
 train_environment.reset(seed)
-deep_set.learn(total_training_steps, progress_bar=True)
+deep_set.learn(total_timesteps=total_training_steps, callback=eval_callback, progress_bar=True)
 
 train_environment.close()
 print("Aprendizagem concluída")

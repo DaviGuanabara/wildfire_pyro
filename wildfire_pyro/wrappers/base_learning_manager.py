@@ -3,31 +3,64 @@ import time
 from typing import Any, Dict, Optional
 from wildfire_pyro.wrappers.components.replay_buffer import ReplayBuffer
 from wildfire_pyro.environments.base_environment import BaseEnvironment
-import logging
 from gymnasium import spaces
 import numpy as np
 import torch
+
 
 import wildfire_pyro.common.logger as logger
 from wildfire_pyro.common.utils import obs_as_tensor, safe_mean
 from wildfire_pyro.common import utils
 
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 
 if TYPE_CHECKING:
     from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback, NoneCallback
 
+import pathlib
+import io
+import zipfile
+import pickle
+
+
+def recursive_getattr(obj, attr, *default):
+    """Helper to access nested attributes safely."""
+    attributes = attr.split(".")
+    for attribute in attributes:
+        obj = getattr(obj, attribute, *default)
+    return obj
+
+
+def save_to_zip_file(
+    path: Union[str, pathlib.Path, io.BufferedIOBase],
+    data: Dict[str, Any],
+    params: Dict[str, Any],
+    pytorch_variables: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Helper function to save an object to a compressed zip file."""
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        # Save non-PyTorch data
+        archive.writestr("data.pkl", pickle.dumps(data))
+
+        # Save PyTorch parameters
+        with archive.open("params.pth", "w") as f:
+            torch.save(params, f)
+
+        # Save additional PyTorch variables
+        if pytorch_variables is not None:
+            with archive.open("pytorch_variables.pth", "w") as f:
+                torch.save(pytorch_variables, f)
 
 
 class BaseLearningManager:
-    def __init__(self, environment: BaseEnvironment, neural_network: Any, parameters: Dict[str, Any]):
+    def __init__(self, environment: BaseEnvironment, neural_network: torch.nn.Module, parameters: Dict[str, Any]):
         """
         Initializes the learning manager.
 
         Args:
             environment (BaseEnvironment): Gymnasium environment instance.
-            neural_network (Any): Neural network to be trained.
+            neural_network (torch.nn.Module): Neural network to be trained.
             parameters (Dict[str, Any]): Dictionary with training parameters.
         """
         self.environment = environment
@@ -165,13 +198,13 @@ class BaseLearningManager:
         callback = self._init_callback(callback, progress_bar)
         return total_timesteps, callback
 
-    def learn(self, total_steps: int, callback=None, progress_bar: bool = False):
+    def learn(self, total_timesteps: int, callback=None, progress_bar: bool = False):
         """
         Main learning loop.
         Alternates between collecting rollouts and training the neural network.
         """
         total_timesteps, callback = self._setup_learn(
-            total_steps, callback=callback, progress_bar=progress_bar)
+            total_timesteps, callback=callback, progress_bar=progress_bar)
 
         callback.on_training_start(locals(), globals())
 
@@ -221,3 +254,68 @@ class BaseLearningManager:
         self.logger.record("time/total_timesteps",
                            self.num_timesteps, exclude="tensorboard")
         self.logger.dump(step=self.num_timesteps)
+
+
+    def save(
+        self,
+        path: Union[str, pathlib.Path, io.BufferedIOBase],
+        exclude: Optional[Iterable[str]] = None,
+        include: Optional[Iterable[str]] = None,
+    ) -> None:
+        """
+        Save all the attributes of the object and the model parameters in a zip-file.
+
+        :param path: Path to save the RL agent.
+        :param exclude: Parameters to exclude from saving.
+        :param include: Parameters to include (even if normally excluded).
+        """
+        path = pathlib.Path(path) if isinstance(path, str) else path
+
+        # Copy instance attributes
+        data = self.__dict__.copy()
+
+        # Default parameters to exclude from saving
+        if exclude is None:
+            exclude = set()
+        else:
+            exclude = set(exclude)
+
+        exclude.update(self._excluded_save_params())
+
+        # Ensure explicitly included parameters are not excluded
+        if include is not None:
+            exclude.difference_update(include)
+
+        # Handle PyTorch parameters
+        state_dicts_names, torch_variable_names = self._get_torch_save_params()
+        pytorch_variables = {name: recursive_getattr(self, name) for name in torch_variable_names}
+
+        # Remove excluded attributes
+        for param_name in exclude:
+            data.pop(param_name, None)
+
+        # Get state dictionaries
+        params_to_save = self.get_parameters()
+
+        # Save everything to a zip file
+        save_to_zip_file(path, data=data, params=params_to_save, pytorch_variables=pytorch_variables)
+
+    def _excluded_save_params(self) -> set:
+        """
+        Returns a set of default attributes that should not be saved.
+        """
+        return {"logger", "environment", "buffer", "_last_obs", "_last_info"}
+
+    def _get_torch_save_params(self):
+        """
+        Returns a tuple with:
+        - List of names of state dictionaries to save.
+        - List of names of PyTorch tensors/variables to save.
+        """
+        return ["neural_network.state_dict"], ["neural_network"]
+    
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Retrieve model parameters.
+        """
+        return {"neural_network": self.neural_network.state_dict()}

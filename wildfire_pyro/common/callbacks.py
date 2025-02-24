@@ -27,7 +27,13 @@ import warnings
 import os
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
+import torch
 
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None  # Handle cases where TensorBoard is missing
 
 try:
     from tqdm import TqdmExperimentalWarning
@@ -241,3 +247,143 @@ class ProgressBarCallback(BaseCallback):
 
     def _on_training_end(self) -> None:
         self.pbar.close()
+
+class EventCallback(BaseCallback):
+
+    def __init__(self, callback: Optional[BaseCallback] = None, verbose: int = 0):
+        super(EventCallback, self).__init__(verbose=verbose)
+        self.callback = callback
+        # Give access to the parent
+        if callback is not None:
+            self.callback.parent = self
+
+    def init_callback(self, learner) -> None:
+        super(EventCallback, self).init_callback(learner)
+        if self.callback is not None:
+            self.callback.init_callback(self.learner)
+
+    def _on_training_start(self) -> None:
+        if self.callback is not None:
+            self.callback.on_training_start(self.locals, self.globals)
+
+    def _on_event(self) -> bool:
+        if self.callback is not None:
+            return self.callback.on_step()
+        return True
+
+    def _on_step(self) -> bool:
+        return True
+
+
+class EvalCallback(EventCallback):
+    """
+    Evaluation Callback for supervised learning.
+
+    :param eval_env: (BaseEnvironment) The environment used for validation.
+    :param learner: (BaseLearningManager) The learning manager handling training.
+    :param loss_function: (Callable) Function to compute loss between predictions and ground truth.
+    :param n_eval_episodes: (int) Number of evaluation episodes.
+    :param eval_freq: (int) Evaluate the model every `eval_freq` training steps.
+    :param log_path: (Optional[str]) Path to save evaluation results.
+    :param best_model_save_path: (Optional[str]) Path to save best model.
+    :param tensorboard_log: (Optional[str]) Path for TensorBoard logging.
+    :param verbose: (int) Verbosity level (0 = silent, 1 = print evaluation results).
+    """
+
+    def __init__(
+        self,
+        eval_env: BaseEnvironment,
+        loss_function: Callable[[Any, Any], Any] = torch.nn.MSELoss(),  # Should be a function like `torch.nn.MSELoss()`
+        n_eval_episodes: int = 5,
+        eval_freq: int = 1000,
+        log_path: Optional[str] = None,
+        best_model_save_path: Optional[str] = None,
+        tensorboard_log: Optional[str] = None,
+        verbose: int = 0,
+    ):
+        super().__init__(verbose=verbose)
+        self.eval_env = eval_env
+        self.loss_function = loss_function
+        self.n_eval_episodes = n_eval_episodes
+        self.eval_freq = eval_freq
+        self.best_model_save_path = best_model_save_path
+        self.best_mean_loss = np.inf  # Minimize loss in supervised learning
+
+        self.log_path = os.path.join(log_path, "evaluations") if log_path else None
+        self.evaluations_results = []
+        self.evaluations_timesteps = []
+
+        self.tensorboard_log = tensorboard_log
+        self.tb_writer = SummaryWriter(log_dir=tensorboard_log) if tensorboard_log and SummaryWriter else None
+
+    def _init_callback(self) -> None:
+        """Initializes callback and creates necessary directories."""
+        if self.best_model_save_path:
+            os.makedirs(self.best_model_save_path, exist_ok=True)
+        if self.log_path:
+            os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+
+    #TODO: Trocar _evaluate_model por _evaluate_learner
+    def _evaluate_model(self) -> float:
+        """
+        Evaluates the model on the validation environment.
+
+        :return: Mean loss across episodes.
+        """
+        total_loss = 0.0
+
+        for _ in range(self.n_eval_episodes):
+            
+            # TODO: isso daqui tá errado!
+            # o reset retorna uma tupla de obs e info. Em info, eu tenho que estrair o true_label (ground truth)
+            raise ValueError('Corrigir isso aqui.')
+            eval_reset = self.eval_env.reset()
+            obs = eval_reset[0] if isinstance(eval_reset, tuple) else eval_reset
+            true_label = eval_reset[1] if isinstance(eval_reset, tuple) and len(eval_reset) > 1 else None
+
+            done = False
+            while not done:
+                pred = self.learner.predict(obs)
+
+                if true_label is not None:
+                    loss = self.loss_function(pred, true_label)  # Compute loss
+                    total_loss += loss.item()  # Convert Tensor to float if using PyTorch
+
+                step_result = self.eval_env.step(pred)
+                obs = step_result[0] if isinstance(step_result, tuple) else step_result
+                true_label = step_result[1] if isinstance(step_result, tuple) and len(step_result) > 1 else None
+                done = step_result[2] if isinstance(step_result, tuple) and len(step_result) > 2 else False
+
+        mean_loss = total_loss / self.n_eval_episodes
+        return mean_loss
+
+    def _on_step(self) -> bool:
+        """Runs evaluation and logs results."""
+        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            mean_loss = self._evaluate_model()
+
+            if self.log_path:
+                self.evaluations_timesteps.append(self.num_timesteps)
+                self.evaluations_results.append(mean_loss)
+                np.savez(self.log_path, timesteps=self.evaluations_timesteps, results=self.evaluations_results)
+
+            if self.verbose > 0:
+                print(f"[Evaluation] Num Timesteps: {self.num_timesteps} | Loss: {mean_loss:.4f}")
+
+            if hasattr(self.learner, "logger") and isinstance(self.learner.logger, Logger):
+                self.learner.logger.record("eval/loss", mean_loss)
+                self.learner.logger.record("time/total_timesteps", self.num_timesteps)
+                self.learner.logger.dump(self.num_timesteps)
+
+            if self.tb_writer:
+                self.tb_writer.add_scalar("eval/loss", mean_loss, self.num_timesteps)
+                self.tb_writer.flush()
+
+            if mean_loss < self.best_mean_loss:
+                if self.verbose > 0:
+                    print("New best loss achieved!")
+                if self.best_model_save_path:
+                    self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
+                self.best_mean_loss = mean_loss
+
+        return True
