@@ -19,6 +19,9 @@ gymnasium = "^1.0.0"
 pytest = "^8.3.4"
 tqdm = "^4.67.1"
 rich = "^13.9.4"
+torchvision = "^0.21.0"
+torchaudio = "^2.6.0"
+tensorboard = "^2.19.0"
 
 [build-system]
 requires = ["poetry-core"]

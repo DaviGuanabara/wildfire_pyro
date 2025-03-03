@@ -9,7 +9,6 @@ class BaseEnvironment(Env, ABC):
     Child classes must implement the abstract methods and properties.
     """
 
-
     @abstractmethod
     def reset(
         self, seed: int = None, options: Dict[str, Any] = None
@@ -27,8 +26,7 @@ class BaseEnvironment(Env, ABC):
         pass
 
     @abstractmethod
-    def step(self, action: Any) -> Tuple[Any,
-                                         float, bool, bool, Dict[str, Any]]:
+    def step(self, action: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         """
         Executes one time step within the environment.
 
@@ -61,4 +59,8 @@ class BaseEnvironment(Env, ABC):
         """
         Performs any necessary cleanup.
         """
+        pass
+
+    @abstractmethod
+    def get_bootstrap_observations(self):
         pass

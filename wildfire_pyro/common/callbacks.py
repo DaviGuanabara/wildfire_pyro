@@ -21,7 +21,7 @@
 from .logger import Logger
 import numpy as np
 import gymnasium as gym
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union, List
 from abc import ABC, abstractmethod
 import warnings
 import os
@@ -81,7 +81,9 @@ class BaseCallback(ABC):
     def _init_callback(self) -> None:
         pass
 
-    def on_training_start(self, locals_: dict[str, Any], globals_: dict[str, Any]) -> None:
+    def on_training_start(
+        self, locals_: dict[str, Any], globals_: dict[str, Any]
+    ) -> None:
         self.locals = locals_
         self.globals = globals_
         self.num_timesteps = self.learner.num_timesteps
@@ -130,16 +132,18 @@ class BaseCallback(ABC):
 
 class NoneCallback(BaseCallback):
 
-    def __init__(self, callback: Optional[Callable[[dict[str, Any], dict[str, Any]], bool]] = None, verbose: int = 0):
+    def __init__(
+        self,
+        callback: Optional[Callable[[dict[str, Any], dict[str, Any]], bool]] = None,
+        verbose: int = 0,
+    ):
         super().__init__(verbose)
-        
+
     def _on_step(self) -> bool:
         """
         Called at every step. Returning False stops training.
         """
         return True
-
-
 
 
 class CallbackList(BaseCallback):
@@ -189,7 +193,11 @@ class ConvertCallback(BaseCallback):
     :param callback: Function that takes (locals, globals) as arguments.
     """
 
-    def __init__(self, callback: Optional[Callable[[dict[str, Any], dict[str, Any]], bool]], verbose: int = 0):
+    def __init__(
+        self,
+        callback: Optional[Callable[[dict[str, Any], dict[str, Any]], bool]],
+        verbose: int = 0,
+    ):
         super().__init__(verbose)
         self.callback = callback
 
@@ -208,7 +216,13 @@ class CheckpointCallback(BaseCallback):
     :param name_prefix: Prefix for the saved files.
     """
 
-    def __init__(self, save_freq: int, save_path: str, name_prefix: str = "learner", verbose: int = 0):
+    def __init__(
+        self,
+        save_freq: int,
+        save_path: str,
+        name_prefix: str = "learner",
+        verbose: int = 0,
+    ):
         super().__init__(verbose)
         self.save_freq = save_freq
         self.save_path = save_path
@@ -220,7 +234,8 @@ class CheckpointCallback(BaseCallback):
     def _on_step(self) -> bool:
         if self.n_calls % self.save_freq == 0:
             model_path = os.path.join(
-                self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip")
+                self.save_path, f"{self.name_prefix}_{self.num_timesteps}_steps.zip"
+            )
             self.learner.save(model_path)
             if self.verbose >= 1:
                 print(f"Saved checkpoint at {model_path}")
@@ -239,7 +254,8 @@ class ProgressBarCallback(BaseCallback):
 
     def _on_training_start(self) -> None:
         self.pbar = tqdm(
-            total=self.locals["total_timesteps"] - self.learner.num_timesteps)
+            total=self.locals["total_timesteps"] - self.learner.num_timesteps
+        )
 
     def _on_step(self) -> bool:
         self.pbar.update(1)
@@ -247,6 +263,7 @@ class ProgressBarCallback(BaseCallback):
 
     def _on_training_end(self) -> None:
         self.pbar.close()
+
 
 class EventCallback(BaseCallback):
 
@@ -276,25 +293,12 @@ class EventCallback(BaseCallback):
 
 
 class EvalCallback(EventCallback):
-    """
-    Evaluation Callback for supervised learning.
-
-    :param eval_env: (BaseEnvironment) The environment used for validation.
-    :param learner: (BaseLearningManager) The learning manager handling training.
-    :param loss_function: (Callable) Function to compute loss between predictions and ground truth.
-    :param n_eval_episodes: (int) Number of evaluation episodes.
-    :param eval_freq: (int) Evaluate the model every `eval_freq` training steps.
-    :param log_path: (Optional[str]) Path to save evaluation results.
-    :param best_model_save_path: (Optional[str]) Path to save best model.
-    :param tensorboard_log: (Optional[str]) Path for TensorBoard logging.
-    :param verbose: (int) Verbosity level (0 = silent, 1 = print evaluation results).
-    """
-
     def __init__(
         self,
-        eval_env: BaseEnvironment,
-        loss_function: Callable[[Any, Any], Any] = torch.nn.MSELoss(),  # Should be a function like `torch.nn.MSELoss()`
-        n_eval_episodes: int = 5,
+        evaluation_environment: BaseEnvironment,
+        error_function: Optional[Callable[[Any, Any], Any]] = None,  # More general name
+        n_eval: int = 5,
+        n_bootstrap: int = 4,
         eval_freq: int = 1000,
         log_path: Optional[str] = None,
         best_model_save_path: Optional[str] = None,
@@ -302,88 +306,124 @@ class EvalCallback(EventCallback):
         verbose: int = 0,
     ):
         super().__init__(verbose=verbose)
-        self.eval_env = eval_env
-        self.loss_function = loss_function
-        self.n_eval_episodes = n_eval_episodes
+        self.evaluation_environment: BaseEnvironment = evaluation_environment
+        self.error_function = error_function if error_function else torch.nn.MSELoss()
+        self.n_eval = n_eval
         self.eval_freq = eval_freq
-        self.best_model_save_path = best_model_save_path
-        self.best_mean_loss = np.inf  # Minimize loss in supervised learning
+        self.best_batch_error = np.inf  # Minimize error (not "loss")
+        self.n_bootstrap = n_bootstrap
 
         self.log_path = os.path.join(log_path, "evaluations") if log_path else None
         self.evaluations_results = []
         self.evaluations_timesteps = []
+        self.all_errors: List[float] = []
 
         self.tensorboard_log = tensorboard_log
-        self.tb_writer = SummaryWriter(log_dir=tensorboard_log) if tensorboard_log and SummaryWriter else None
+        self.tb_writer = (
+            SummaryWriter(log_dir=tensorboard_log) if tensorboard_log else None
+        )
 
-    def _init_callback(self) -> None:
-        """Initializes callback and creates necessary directories."""
-        if self.best_model_save_path:
-            os.makedirs(self.best_model_save_path, exist_ok=True)
-        if self.log_path:
-            os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+        self.best_model_save_path = best_model_save_path
 
-    #TODO: Trocar _evaluate_model por _evaluate_learner
-    def _evaluate_model(self) -> float:
-        """
-        Evaluates the model on the validation environment.
+    def _evaluate_learner(self) -> tuple[float, float, float]:
+        """Evaluates the learner using the error function."""
+        self.evaluation_environment.reset()
+        errors = []
 
-        :return: Mean loss across episodes.
-        """
-        total_loss = 0.0
+        for _ in range(self.n_eval):
+            mean_prediction, _, error = self.bootstrap_evaluation(self.n_bootstrap)
+            errors.append(error)
+            self.all_errors.append(error)
+            self.evaluation_environment.step(mean_prediction)
 
-        for _ in range(self.n_eval_episodes):
-            
-            # TODO: isso daqui tá errado!
-            # o reset retorna uma tupla de obs e info. Em info, eu tenho que estrair o true_label (ground truth)
-            raise ValueError('Corrigir isso aqui.')
-            eval_reset = self.eval_env.reset()
-            obs = eval_reset[0] if isinstance(eval_reset, tuple) else eval_reset
-            true_label = eval_reset[1] if isinstance(eval_reset, tuple) and len(eval_reset) > 1 else None
+        # Compute smoothed error using the last 100 evaluations
+        if self.all_errors:
+            smoothed_error = np.mean(self.all_errors[-100:])
+        else:
+            smoothed_error = np.nan  # Avoid errors if empty
 
-            done = False
-            while not done:
-                pred = self.learner.predict(obs)
+        return np.mean(errors), np.std(errors), smoothed_error
 
-                if true_label is not None:
-                    loss = self.loss_function(pred, true_label)  # Compute loss
-                    total_loss += loss.item()  # Convert Tensor to float if using PyTorch
+    def bootstrap_evaluation(self, n_bootstrap) -> tuple[float, float, float]:
+        """Performs a single bootstrap evaluation."""
+        bootstrap_observations, ground_truth = (
+            self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
+        )
 
-                step_result = self.eval_env.step(pred)
-                obs = step_result[0] if isinstance(step_result, tuple) else step_result
-                true_label = step_result[1] if isinstance(step_result, tuple) and len(step_result) > 1 else None
-                done = step_result[2] if isinstance(step_result, tuple) and len(step_result) > 2 else False
+        predictions = []
+        for obs in bootstrap_observations:
+            action, _ = self.learner.predict(obs)
+            predictions.append(action.item())
 
-        mean_loss = total_loss / self.n_eval_episodes
-        return mean_loss
+        mean_prediction = np.mean(predictions)
+        std_prediction = np.std(predictions)
+
+        # Handle both PyTorch losses and custom functions
+        pred_tensor = torch.tensor(mean_prediction, dtype=torch.float32)
+        gt_tensor = torch.tensor(ground_truth, dtype=torch.float32)
+
+        if isinstance(self.error_function, torch.nn.modules.loss._Loss):
+            error = self.error_function(pred_tensor, gt_tensor)
+            error = error.item() if isinstance(error, torch.Tensor) else float(error)
+
+        else:
+            error = self.error_function(
+                mean_prediction, ground_truth
+            )  # Assume user-defined function works on floats
+
+        return mean_prediction, std_prediction, error
 
     def _on_step(self) -> bool:
         """Runs evaluation and logs results."""
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-            mean_loss = self._evaluate_model()
+            batch_error, std_error, smoothed_error = self._evaluate_learner()
 
             if self.log_path:
                 self.evaluations_timesteps.append(self.num_timesteps)
-                self.evaluations_results.append(mean_loss)
-                np.savez(self.log_path, timesteps=self.evaluations_timesteps, results=self.evaluations_results)
+                self.evaluations_results.append(batch_error)
+                np.savez(
+                    self.log_path,
+                    timesteps=self.evaluations_timesteps,
+                    results=self.evaluations_results,
+                )
 
             if self.verbose > 0:
-                print(f"[Evaluation] Num Timesteps: {self.num_timesteps} | Loss: {mean_loss:.4f}")
+                print(
+                    f"[Evaluation] Num Timesteps: {self.num_timesteps} | Mean Error: {batch_error:.4f} | Std Error: {std_error:.4f}"
+                )
 
-            if hasattr(self.learner, "logger") and isinstance(self.learner.logger, Logger):
-                self.learner.logger.record("eval/loss", mean_loss)
+            if hasattr(self.learner, "logger") and isinstance(
+                self.learner.logger, Logger
+            ):
+                self.learner.logger.record(
+                    "eval/batch_error", batch_error
+                )  # Fix naming
+                self.learner.logger.record("eval/std_error", std_error)
+                self.learner.logger.record("eval/smoothed_error", smoothed_error)
                 self.learner.logger.record("time/total_timesteps", self.num_timesteps)
                 self.learner.logger.dump(self.num_timesteps)
 
             if self.tb_writer:
-                self.tb_writer.add_scalar("eval/loss", mean_loss, self.num_timesteps)
+                self.tb_writer.add_scalar(
+                    "eval/raw_error", batch_error, self.num_timesteps
+                )
+                self.tb_writer.add_scalar(
+                    "eval/smoothed_error", smoothed_error, self.num_timesteps
+                )
+                self.tb_writer.add_scalar(
+                    "eval/std_error", std_error, self.num_timesteps
+                )
                 self.tb_writer.flush()
 
-            if mean_loss < self.best_mean_loss:
+            if batch_error < self.best_batch_error:
                 if self.verbose > 0:
-                    print("New best loss achieved!")
+                    print("New best batch error achieved!")
                 if self.best_model_save_path:
-                    self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
-                self.best_mean_loss = mean_loss
+                    self.learner.save(
+                        os.path.join(self.best_model_save_path, "best_model")
+                    )
+                self.best_batch_error = (
+                    batch_error  # Keep for comparison in next evaluations
+                )
 
         return True

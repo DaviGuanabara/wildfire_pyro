@@ -18,7 +18,6 @@ def get_path(file_name):
     return data_path
 
 
-
 # ==================================================================================================
 # SETUP
 # Configurações do ambiente de treinamento e teste
@@ -35,15 +34,15 @@ train_data = get_path("fixed_train.csv")
 validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
-total_training_steps = 1000
-n_bootstrap = 20  
+total_training_steps = 100_000
+n_bootstrap = 20
 
 agent_parameters = {
-    "lr": 0.1,  
-    "device": "cuda" if torch.cuda.is_available() else "cpu",  
-    "dropout_prob": 0.2,  
-    "hidden": 64,  
-    "batch_size": 128,  
+    "lr": 0.1,
+    "device": "cuda" if torch.cuda.is_available() else "cpu",
+    "dropout_prob": 0.2,
+    "hidden": 64,
+    "batch_size": 128,
 }
 
 
@@ -70,14 +69,16 @@ test_environment = SensorEnvironment(
 )
 
 
-eval_callback = EvalCallback(validation_environment, best_model_save_path="./logs/",
-                             log_path="./logs/", eval_freq=500,)
+eval_callback = EvalCallback(
+    validation_environment,
+    best_model_save_path="./logs/",
+    log_path="./logs/",
+    tensorboard_log="./logs/tensorboard",
+    eval_freq=500,
+)
 
 
 deep_set = create_deep_set_learner(train_environment, agent_parameters)
-
-
-
 
 
 # ==================================================================================================
@@ -89,7 +90,9 @@ deep_set = create_deep_set_learner(train_environment, agent_parameters)
 # ==================================================================================================
 
 train_environment.reset(seed)
-deep_set.learn(total_timesteps=total_training_steps, callback=eval_callback, progress_bar=True)
+deep_set.learn(
+    total_timesteps=total_training_steps, callback=eval_callback, progress_bar=True
+)
 
 train_environment.close()
 print("Aprendizagem concluída")
@@ -104,31 +107,41 @@ print("Aprendizagem concluída")
 print("\n=== Iniciando avaliação com Bootstrap ===")
 observation, info = test_environment.reset()
 print(f">> Sensor em avaliação (ID: {info['sensor']['sensor_id']})")
-print(f"   Latitude: {info['sensor']['lat']:.4f}, Longitude: {info['sensor']['lon']:.4f}")
+print(
+    f"   Latitude: {info['sensor']['lat']:.4f}, Longitude: {info['sensor']['lon']:.4f}"
+)
 print(f">> Ground Truth: {info['ground_truth']:.4f}")
 
 
 for step in range(2):
-    
-    bootstrap_observations, ground_truth = test_environment.get_bootstrap_observations(n_bootstrap)
-    
+
+    bootstrap_observations, ground_truth = test_environment.get_bootstrap_observations(
+        n_bootstrap
+    )
+
     # Para cada bootstrap sample, o modelo faz uma previsão.
     predictions = []
     for obs in bootstrap_observations:
         action, _ = deep_set.predict(obs)
         predictions.append(action.item())
-    
+
     mean_prediction = np.mean(predictions)
     std_prediction = np.std(predictions)
     error = mean_prediction - ground_truth
     print(f"\n--- Step {step} ---")
-    print(f">> Bootstrap: Mean Prediction: {mean_prediction:.4f}, Std: {std_prediction:.4f}, Error: {error:.4f}")
-    
+    print(
+        f">> Bootstrap: Mean Prediction: {mean_prediction:.4f}, Std: {std_prediction:.4f}, Error: {error:.4f}"
+    )
+
     # Avança para o próximo sensor
     final_prediction = np.array([mean_prediction])
-    observation, reward, terminated, truncated, info = test_environment.step(final_prediction)
-    print(f">> Próximo sensor: ID: {info['sensor']['sensor_id']}, Ground Truth: {info['ground_truth']:.4f}")
-    
+    observation, reward, terminated, truncated, info = test_environment.step(
+        final_prediction
+    )
+    print(
+        f">> Próximo sensor: ID: {info['sensor']['sensor_id']}, Ground Truth: {info['ground_truth']:.4f}"
+    )
+
     if terminated:
         print("\nO episódio terminou.")
         break
