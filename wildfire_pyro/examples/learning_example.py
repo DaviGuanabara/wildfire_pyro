@@ -34,7 +34,7 @@ train_data = get_path("fixed_train.csv")
 validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
-total_training_steps = 100_000
+total_training_steps = 1_000
 n_bootstrap = 20
 
 agent_parameters = {
@@ -95,6 +95,7 @@ deep_set.learn(
 )
 
 train_environment.close()
+validation_environment.close()
 print("Aprendizagem concluída")
 
 
@@ -104,14 +105,8 @@ print("Aprendizagem concluída")
 # O treinamento segue a ideia de gerar N conjuntos de vizinhos para estimar a incerteza.
 # ==================================================================================================
 
-print("\n=== Iniciando avaliação com Bootstrap ===")
+print("\n=== Starting Bootstrap Evaluation ===")
 observation, info = test_environment.reset()
-print(f">> Sensor em avaliação (ID: {info['sensor']['sensor_id']})")
-print(
-    f"   Latitude: {info['sensor']['lat']:.4f}, Longitude: {info['sensor']['lon']:.4f}"
-)
-print(f">> Ground Truth: {info['ground_truth']:.4f}")
-
 
 for step in range(2):
 
@@ -119,7 +114,7 @@ for step in range(2):
         n_bootstrap
     )
 
-    # Para cada bootstrap sample, o modelo faz uma previsão.
+    # For each bootstrap sample, the model makes a prediction.
     predictions = []
     for obs in bootstrap_observations:
         action, _ = deep_set.predict(obs)
@@ -128,22 +123,27 @@ for step in range(2):
     mean_prediction = np.mean(predictions)
     std_prediction = np.std(predictions)
     error = mean_prediction - ground_truth
+
     print(f"\n--- Step {step} ---")
+    print(f">> Evaluating Sensor (ID: {info['sensor']['sensor_id']})")
     print(
-        f">> Bootstrap: Mean Prediction: {mean_prediction:.4f}, Std: {std_prediction:.4f}, Error: {error:.4f}"
+        f"   Location: Latitude {info['sensor']['lat']:.4f}, Longitude {info['sensor']['lon']:.4f}, y {info['ground_truth']:.4f}"
+    )
+    print(
+        f">> Bootstrap Results: Mean Prediction: {mean_prediction:.4f}, "
+        f"Std Dev: {std_prediction:.4f}, Ground Truth: {ground_truth:.4f}, "
+        f"Error: {error:.4f}"
     )
 
-    # Avança para o próximo sensor
+    # Move to the next sensor
     final_prediction = np.array([mean_prediction])
     observation, reward, terminated, truncated, info = test_environment.step(
         final_prediction
     )
-    print(
-        f">> Próximo sensor: ID: {info['sensor']['sensor_id']}, Ground Truth: {info['ground_truth']:.4f}"
-    )
 
     if terminated:
-        print("\nO episódio terminou.")
+        print("\nThe episode has ended.")
         break
+
 
 test_environment.close()
