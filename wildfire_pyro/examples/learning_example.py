@@ -84,9 +84,7 @@ deep_set = create_deep_set_learner(train_environment, agent_parameters)
 # ==================================================================================================
 # LEARNING
 # Executa o processo de aprendizagem
-# TODO: ADICIONAR VALIDAÇÃO PARA ACOMPANHAR TREINAMENTO
-# TODO: ADICIONAR MÉTRICAS DE APRENDIZAGEM
-# TODO: ADICIONAR CALLBACKS DO SB3
+# TODO: ADICIONAR MÉTRICAS DE APRENDIZAGEM (Adicionar o KNN como baselien da validação ?)
 # ==================================================================================================
 
 train_environment.reset(seed)
@@ -114,7 +112,6 @@ for step in range(2):
         n_bootstrap
     )
 
-    # For each bootstrap sample, the model makes a prediction.
     predictions = []
     for obs in bootstrap_observations:
         action, _ = deep_set.predict(obs)
