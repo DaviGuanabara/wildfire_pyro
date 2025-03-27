@@ -64,3 +64,7 @@ class BaseEnvironment(Env, ABC):
     @abstractmethod
     def get_bootstrap_observations(self):
         pass
+
+    def baseline(self):
+        """Returns a baseline prediction. Should be overridden if applicable."""
+        return None

@@ -70,14 +70,17 @@ class SensorEnvironment(BaseEnvironment):
             Tuple[np.ndarray, dict]: Observação inicial e informações adicionais.
         """
         self.current_step = 0
-        
+
         self.sensor_manager.reset(seed)
 
         observation, self.ground_truth = self._generate_observation()
 
-        return observation, {"ground_truth": self.ground_truth, "sensor": self._sensor_info()}
+        return observation, {
+            "ground_truth": self.ground_truth,
+            "sensor": self._sensor_info(),
+        }
 
-    #TODO: a ação deve mesmo ser um array ?
+    # TODO: a ação deve mesmo ser um array ?
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """
         A step in the environment.
@@ -88,9 +91,7 @@ class SensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[np.ndarray, float, bool, bool, dict]: Observation, reward, terminated, truncated, info.
         """
-        
-        
-        
+
         self.current_step += 1
         self.sensor_manager.step()
 
@@ -98,8 +99,9 @@ class SensorEnvironment(BaseEnvironment):
         reward = self._calculate_reward()
 
         terminated = self._is_terminated()
-        truncated = False 
-        
+        truncated = False
+
+        # TODO: Adicionar o baseline como retorno no info ?
         return (
             observation,
             reward,
@@ -117,7 +119,9 @@ class SensorEnvironment(BaseEnvironment):
         """
         sensor_id = self.sensor_manager.state_tracker["current_sensor"]
         current_index = self.sensor_manager.state_tracker["current_time_index"]
-        sensor_data = self.sensor_manager.cache["data_from_current_sensor"].iloc[current_index]
+        sensor_data = self.sensor_manager.cache["data_from_current_sensor"].iloc[
+            current_index
+        ]
 
         sensor_info = {
             "lat": round(sensor_data[self.sensor_manager.LATITUDE_TAG], 4),
@@ -127,7 +131,6 @@ class SensorEnvironment(BaseEnvironment):
         }
 
         return sensor_info
-
 
     def _calculate_reward(self) -> float:
 
@@ -154,11 +157,13 @@ class SensorEnvironment(BaseEnvironment):
             Tuple[np.ndarray, float]: Observação com shape (n_neighbors_max, 5) e ground truth.
         """
         # Obtém os deltas dos vizinhos já processados
-        deltas = self.sensor_manager.get_neighbors_deltas(self.n_neighbors_max, self.n_neighbors_min)
+        deltas = self.sensor_manager.get_neighbors_deltas(
+            self.n_neighbors_max, self.n_neighbors_min
+        )
 
         # Criação da matriz de observação (n_neighbors_max, 4)
-        #TODO: Esse hardcoded 4 é o tamanho do vetor de deltas. Deveria ser um parâmetro
-        #retirado da própria classe SensorManager, da base de dados.
+        # TODO: Esse hardcoded 4 é o tamanho do vetor de deltas. Deveria ser um parâmetro
+        # retirado da própria classe SensorManager, da base de dados.
         observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
         mask = np.zeros(self.n_neighbors_max, dtype=bool)
 
@@ -168,7 +173,9 @@ class SensorEnvironment(BaseEnvironment):
         mask[:num_neighbors] = True  # Vizinhos reais
 
         # Concatena a máscara à matriz de observação
-        observation = np.hstack((observation_matrix, mask.reshape(-1, 1).astype(np.float32)))
+        observation = np.hstack(
+            (observation_matrix, mask.reshape(-1, 1).astype(np.float32))
+        )
 
         # Obtém o ground truth do SensorManager
         ground_truth = self.sensor_manager.get_ground_truth()
@@ -180,62 +187,86 @@ class SensorEnvironment(BaseEnvironment):
         Fecha o ambiente.
         """
         pass
-    
-    # UPDATE ─────────────────────────────────────────────────────
+
     def get_bootstrap_observations(self, n_bootstrap: int) -> Tuple[list, float]:
         """
         Generates a list of observations using bootstrap neighbor deltas and returns a single ground truth value.
-        
-        For each bootstrap sample, the SensorManager's get_bootstrap_neighbors_deltas method is used to 
+
+        For each bootstrap sample, the SensorManager's get_bootstrap_neighbors_deltas method is used to
         obtain a delta DataFrame. An observation matrix is built from each delta DataFrame by:
         - Creating a feature matrix of shape (n_neighbors_max, 4), where available delta values are placed
             in the upper rows.
         - Creating a boolean mask of length n_neighbors_max (True for rows with data, False for padded rows).
         - Horizontally stacking the feature matrix and the mask (converted to float) to produce an observation
             of shape (n_neighbors_max, 5).
-        
+
         Since the target sensor is locked, the ground truth is computed once and is identical for all samples.
-        
+
         Args:
             n_bootstrap (int): Number of bootstrap samples to generate.
-        
+
         Returns:
             Tuple[list, float]:
                 - A list of observation matrices (each with shape (n_neighbors_max, 5)).
                 - A single ground truth value from the target sensor.
         """
         # Obtain the bootstrap neighbor deltas and the ground truth from the sensor manager.
-        bootstrap_deltas, ground_truth = self.sensor_manager.get_bootstrap_neighbors_deltas(
-            n_bootstrap=n_bootstrap,
-            n_neighbors_max=self.n_neighbors_max,
-            n_neighbors_min=self.n_neighbors_min,
-            time_window=-1,        # Adjust if needed.
-            distance_window=-1,    # Currently unused.
-            force_recompute=False
+        bootstrap_deltas, ground_truth = (
+            self.sensor_manager.get_bootstrap_neighbors_deltas(
+                n_bootstrap=n_bootstrap,
+                n_neighbors_max=self.n_neighbors_max,
+                n_neighbors_min=self.n_neighbors_min,
+                time_window=-1,  # Adjust if needed.
+                distance_window=-1,  # Currently unused.
+                force_recompute=False,
+            )
         )
-        
+
         observations = []
-        
+
         # For each bootstrap sample, build the observation.
         for deltas in bootstrap_deltas:
             # Create an empty feature matrix and a mask.
             observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
             mask = np.zeros(self.n_neighbors_max, dtype=bool)
-            
+
             # Get the number of available neighbors in this sample.
             num_neighbors = len(deltas)
-            
+
             # Fill in the feature matrix with the available delta values.
             if num_neighbors > 0:
                 observation_matrix[:num_neighbors, :] = deltas.values
-            
+
             # Mark the positions corresponding to real neighbors.
             mask[:num_neighbors] = True
-            
+
             # Stack the feature matrix and mask to form the final observation.
             # The mask is converted to float (1.0 for True, 0.0 for False).
-            observation = np.hstack((observation_matrix, mask.reshape(-1, 1).astype(np.float32)))
+            observation = np.hstack(
+                (observation_matrix, mask.reshape(-1, 1).astype(np.float32))
+            )
             observations.append(observation)
-        
+
+        # TODO: Trocar ground_truth por info, e a adicionar no info o ground_truth e o baseline ?
         return observations, ground_truth
 
+    def baseline(self):
+        """
+        Returns a baseline estimation using the mean and standard deviation of the
+        neighbors' 'y' values from the most recent bootstrap.
+
+        This method is optional and not required for the system to operate.
+        However, if implemented, evaluation callbacks may use this as a reference
+        to compare the learner's performance during training or inference.
+
+        Returns:
+            Tuple[float, float]: (mean_y, std_y) if available; otherwise, None.
+        """
+        bootstrap_deltas, _ = self.sensor_manager.get_bootstrap_neighbors_deltas(
+            force_recompute=False
+        )
+
+        mean_y = np.mean([df["y"].mean() for df in bootstrap_deltas])
+        std_y = np.std([df["y"].mean() for df in bootstrap_deltas])
+
+        return mean_y, std_y
