@@ -188,7 +188,9 @@ class SensorEnvironment(BaseEnvironment):
         """
         pass
 
-    def get_bootstrap_observations(self, n_bootstrap: int) -> Tuple[list, float]:
+    def get_bootstrap_observations(
+        self, n_bootstrap: int, force_recompute: bool = True
+    ) -> Tuple[list, float]:
         """
         Generates a list of observations using bootstrap neighbor deltas and returns a single ground truth value.
 
@@ -218,7 +220,7 @@ class SensorEnvironment(BaseEnvironment):
                 n_neighbors_min=self.n_neighbors_min,
                 time_window=-1,  # Adjust if needed.
                 distance_window=-1,  # Currently unused.
-                force_recompute=False,
+                force_recompute=force_recompute,
             )
         )
 
@@ -262,8 +264,8 @@ class SensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[float, float]: (mean_y, std_y) if available; otherwise, None.
         """
-        bootstrap_deltas, ground_truth = self.sensor_manager.get_bootstrap_neighbors_deltas(
-            force_recompute=False
+        bootstrap_deltas, ground_truth = (
+            self.sensor_manager.get_bootstrap_neighbors_deltas(force_recompute=False)
         )
 
         prediction = np.mean([df["y"].mean() for df in bootstrap_deltas])

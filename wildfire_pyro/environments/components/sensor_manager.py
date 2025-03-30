@@ -7,7 +7,6 @@ logger = logging.getLogger("SensorManager")
 logger.setLevel(logging.INFO)
 
 
-
 class SensorManager:
 
     TIME_TAG = "t"
@@ -23,15 +22,13 @@ class SensorManager:
             data_path (str): Path to the dataset file.
         """
         self.data = pd.read_csv(data_path)
-        self.data = self.data.sort_values(by="t").reset_index(
-            drop=True
-        )
-        
+        self.data = self.data.sort_values(by="t").reset_index(drop=True)
+
         self.data["sensor_id"] = self.data.groupby(["lat", "lon"]).ngroup()
         self.sensors = self.data["sensor_id"].unique()
-        
+
         self.reset()
-        
+
     def reset(self, seed: int = None):
         """
         Reset the SensorManager to its initial state.
@@ -41,31 +38,26 @@ class SensorManager:
         """
 
         self.rng = np.random.default_rng(seed)
-        
+
         self.state_tracker = {
-            "current_step": 0,        # Passo atual da simulação
-            "neighbors_step": -1,     # Último passo em que vizinhos foram calculados
-            "deltas_step": -1,        # Último passo em que deltas foram calculados
-            "current_time_index": 0,   # Índice de tempo atual
-            "current_sensor": None,   # Sensor atual
-            "bootstrap_neighbors_step": -1  
+            "current_step": 0,  # Passo atual da simulação
+            "neighbors_step": -1,  # Último passo em que vizinhos foram calculados
+            "deltas_step": -1,  # Último passo em que deltas foram calculados
+            "current_time_index": 0,  # Índice de tempo atual
+            "current_sensor": None,  # Sensor atual
+            "bootstrap_neighbors_step": -1,
         }
 
-        
         self.cache = {
-            "neighbors": None,                # Dados calculados dos vizinhos
-            "deltas": None,                   # Dados calculados dos deltas
-            "data_from_current_sensor": None, # Dados do sensor atual
-            "current_reading": None,          # Novo: armazena a leitura atual do sensor
-            "ground_truth": None,              # Novo: armazena o ground truth diretamente
-            "bootstrap_neighbors": None
-
+            "neighbors": None,  # Dados calculados dos vizinhos
+            "deltas": None,  # Dados calculados dos deltas
+            "data_from_current_sensor": None,  # Dados do sensor atual
+            "current_reading": None,  # Novo: armazena a leitura atual do sensor
+            "ground_truth": None,  # Novo: armazena o ground truth diretamente
+            "bootstrap_neighbors": None,
         }
-        
-        self._select_random_sensor()
-        
 
-    
+        self._select_random_sensor()
 
     def set_random_time_index(self):
         """
@@ -75,8 +67,8 @@ class SensorManager:
 
         # Randomly select an index within the current sensor's data range
         self.state_tracker["current_time_index"] = self.rng.integers(
-            len(self.cache["data_from_current_sensor"]))
-
+            len(self.cache["data_from_current_sensor"])
+        )
 
     def _select_random_sensor(self) -> int:
         """
@@ -86,23 +78,23 @@ class SensorManager:
             int: The randomly selected sensor ID.
         """
         self.state_tracker["current_sensor"] = self.rng.choice(self.sensors)
-        
+
         self.cache["data_from_current_sensor"] = self.data[
             self.data["sensor_id"] == self.state_tracker["current_sensor"]
         ]
-        
+
         self.set_random_time_index()
-    
+
     def step(self):
         """
         Randomly select a sensor and update its corresponding data.
         """
-        
+
         self._select_random_sensor()
 
         # Incrementa o passo atual para controle de cache
         self.state_tracker["current_step"] += 1
-        
+
     def get_current_sensor_data(self) -> pd.Series:
         """
         Obtém a leitura para o sensor atual no índice de tempo atual.
@@ -111,18 +103,20 @@ class SensorManager:
             pd.Series: A linha de dados correspondente ao índice de tempo atual, sem 'sensor_id'.
         """
         if self.state_tracker["current_sensor"] is None:
-            raise ValueError(
-                "No sensor selected. Call `reset()` first.")
+            raise ValueError("No sensor selected. Call `reset()` first.")
 
-        reading = self.cache["data_from_current_sensor"].iloc[self.state_tracker["current_time_index"]].drop(
-            'sensor_id')
-        
+        reading = (
+            self.cache["data_from_current_sensor"]
+            .iloc[self.state_tracker["current_time_index"]]
+            .drop("sensor_id")
+        )
+
         # Salva a leitura atual e o ground truth no cache
         self.cache["current_reading"] = reading
         self.cache["ground_truth"] = reading["y"]
-    
+
         return reading
-    
+
     def get_ground_truth(self) -> float:
         """
         Retorna o ground truth (valor real de 'y') do sensor atual.
@@ -132,9 +126,13 @@ class SensorManager:
 
         return self.cache["ground_truth"]
 
-
-    def get_neighbors(self, n_neighbors_max: int,
-                      n_neighbors_min: int = 1, time_window=-1, distance_window=-1):
+    def get_neighbors(
+        self,
+        n_neighbors_max: int,
+        n_neighbors_min: int = 1,
+        time_window=-1,
+        distance_window=-1,
+    ):
         """
         Seleciona vizinhos aleatórios para um sensor específico dentro de uma janela de tempo.
 
@@ -145,21 +143,23 @@ class SensorManager:
         :return: DataFrame com os vizinhos selecionados
         """
         if n_neighbors_min > n_neighbors_max:
-            raise ValueError(
-                "n_neighbors_min não pode ser maior que n_neighbors_max.")
-            
+            raise ValueError("n_neighbors_min não pode ser maior que n_neighbors_max.")
+
         if self.state_tracker["neighbors_step"] == self.state_tracker["current_step"]:
             return self.cache["neighbors"]
-        
-        neighbors = self._compute_neighbors(n_neighbors_min, n_neighbors_max, time_window)
-        
+
+        neighbors = self._compute_neighbors(
+            n_neighbors_min, n_neighbors_max, time_window
+        )
+
         self.cache["neighbors"] = neighbors
         self.state_tracker["neighbors_step"] = self.state_tracker["current_step"]
-        
+
         return neighbors
-            
-    
-    def _compute_neighbors(self, n_neighbors_min, n_neighbors_max, time_window) -> pd.DataFrame:
+
+    def _compute_neighbors(
+        self, n_neighbors_min, n_neighbors_max, time_window
+    ) -> pd.DataFrame:
         """
         Computes the neighbors for the current sensor within a specified time window.
         """
@@ -171,15 +171,16 @@ class SensorManager:
         candidate_neighbors = self._filter_candidates(timestamp, time_window, sensor_id)
 
         if candidate_neighbors.empty:
-            logger.info("No neighbors found for the sensor {sensor_id}.")
+            logger.info(f"No neighbors found for the sensor {sensor_id}.")
             return pd.DataFrame([])
 
         # Selecionar aleatoriamente os vizinhos
         num_neighbors = self.rng.integers(n_neighbors_min, n_neighbors_max + 1)
-        selected_neighbors = self._select_random_neighbors(candidate_neighbors, num_neighbors)
+        selected_neighbors = self._select_random_neighbors(
+            candidate_neighbors, num_neighbors
+        )
 
         return selected_neighbors.drop(columns=[self.SENSOR_ID_TAG])
-
 
     # Subfunções auxiliares mais coesas
     def _get_current_timestamp(self) -> float:
@@ -187,24 +188,31 @@ class SensorManager:
         current_index = self.state_tracker["current_time_index"]
         return self.cache["data_from_current_sensor"].iloc[current_index][self.TIME_TAG]
 
-
-    def _filter_candidates(self, timestamp: float, time_window: int, sensor_id: int) -> pd.DataFrame:
+    def _filter_candidates(
+        self, timestamp: float, time_window: int, sensor_id: int
+    ) -> pd.DataFrame:
         """
         Filters potential neighbors within the specified time window,
         excluding the current sensor.
         """
         start_time = 0 if time_window == -1 else timestamp - time_window
-        windowed_data = self.data[(self.data[self.TIME_TAG] >= start_time) & (self.data[self.TIME_TAG] <= timestamp)]
+        windowed_data = self.data[
+            (self.data[self.TIME_TAG] >= start_time)
+            & (self.data[self.TIME_TAG] <= timestamp)
+        ]
         return windowed_data[windowed_data[self.SENSOR_ID_TAG] != sensor_id]
 
-
-    def _select_random_neighbors(self, candidates: pd.DataFrame, num_neighbors: int) -> pd.DataFrame:
+    def _select_random_neighbors(
+        self, candidates: pd.DataFrame, num_neighbors: int
+    ) -> pd.DataFrame:
         """
         Randomly selects neighbors from the filtered candidate pool.
         """
         unique_sensors = candidates[self.SENSOR_ID_TAG].unique()
         selected_sensors = self.rng.choice(
-            unique_sensors, size=num_neighbors, replace=num_neighbors > len(unique_sensors)
+            unique_sensors,
+            size=num_neighbors,
+            replace=num_neighbors > len(unique_sensors),
         )
 
         return (
@@ -214,7 +222,9 @@ class SensorManager:
             .reset_index(drop=True)
         )
 
-    def ensure_minimum_neighbors(self, n_neighbors_max, n_neighbors_min, time_window, distance_window) -> pd.DataFrame:
+    def ensure_minimum_neighbors(
+        self, n_neighbors_max, n_neighbors_min, time_window, distance_window
+    ) -> pd.DataFrame:
         """
         Ensures the minimum number of neighbors is met. If not enough neighbors are found,
         steps through the environment until the requirement is met.
@@ -228,18 +238,22 @@ class SensorManager:
         Returns:
             pd.DataFrame: DataFrame with the found neighbors. May be empty if no valid neighbors are found.
         """
-        if not hasattr(self, 'sensors_without_neighbors'):
+        if not hasattr(self, "sensors_without_neighbors"):
             self.sensors_without_neighbors = set()
 
         while True:
-            current_sensor_id = int(self.state_tracker["current_sensor"])  # Ensure it's a regular int
+            current_sensor_id = int(
+                self.state_tracker["current_sensor"]
+            )  # Ensure it's a regular int
 
             # Skip sensors already identified as having no neighbors
             if current_sensor_id in self.sensors_without_neighbors:
                 self.step()
                 continue
 
-            neighbors = self.get_neighbors(n_neighbors_max, n_neighbors_min, time_window, distance_window)
+            neighbors = self.get_neighbors(
+                n_neighbors_max, n_neighbors_min, time_window, distance_window
+            )
 
             if len(neighbors) >= n_neighbors_min:
                 return neighbors  # Sufficient neighbors found
@@ -247,13 +261,18 @@ class SensorManager:
             # Add sensor to the "no neighbors" list and log the update
             self.sensors_without_neighbors.add(current_sensor_id)
             logger.info(
-                f"Sensors without enough neighbors: {sorted(self.sensors_without_neighbors)}")
+                f"Sensors without enough neighbors: {sorted(self.sensors_without_neighbors)}"
+            )
 
             self.step()  # Move to the next sensor
 
-
-    def get_neighbors_deltas(self, n_neighbors_max: int,
-                      n_neighbors_min: int = 1, time_window=-1, distance_window=-1):
+    def get_neighbors_deltas(
+        self,
+        n_neighbors_max: int,
+        n_neighbors_min: int = 1,
+        time_window=-1,
+        distance_window=-1,
+    ):
         """
         Calculates the deltas between the current sensor and its neighbors.
 
@@ -262,18 +281,22 @@ class SensorManager:
         """
         if self.state_tracker["deltas_step"] == self.state_tracker["current_step"]:
             return self.cache["deltas"]
-        
-        reference_sensor:pd.Series = self.get_current_sensor_data()
-        neighbors_sensors:pd.DataFrame = self.ensure_minimum_neighbors(n_neighbors_max, n_neighbors_min, time_window, distance_window)
+
+        reference_sensor: pd.Series = self.get_current_sensor_data()
+        neighbors_sensors: pd.DataFrame = self.ensure_minimum_neighbors(
+            n_neighbors_max, n_neighbors_min, time_window, distance_window
+        )
 
         deltas = self._compute_deltas(neighbors_sensors, reference_sensor)
-        
+
         self.cache["deltas"] = deltas
         self.state_tracker["deltas_step"] = self.state_tracker["current_step"]
-        
+
         return deltas
 
-    def _compute_deltas(self, neighbors: pd.DataFrame, reference: pd.Series) -> pd.DataFrame:
+    def _compute_deltas(
+        self, neighbors: pd.DataFrame, reference: pd.Series
+    ) -> pd.DataFrame:
         """
         Computes the deltas between the reference sensor and its neighbors,
         preserving the 'y' value from each neighbor.
@@ -285,20 +308,17 @@ class SensorManager:
         Returns:
             pd.DataFrame: Calculated deltas for each variable, with 'y' preserved from the neighbors.
         """
-        
+
         # Variables to compute deltas (excluding 'y')
-        delta_columns = [col for col in neighbors.columns if col != 'y']
+        delta_columns = [col for col in neighbors.columns if col != "y"]
 
         # Delta calculation: neighbors - reference
         deltas = neighbors[delta_columns].subtract(reference[delta_columns], axis=1)
 
-
         # Preserve 'y' from the neighbors
-        deltas['y'] = neighbors['y']
+        deltas["y"] = neighbors["y"]
 
         return deltas
-
-
 
     def get_current_sensor_position(self):
         """
@@ -308,14 +328,13 @@ class SensorManager:
             tuple: (latitude, longitude) of the current sensor.
         """
         if self.state_tracker["current_sensor"] is None:
-            raise ValueError(
-                "No sensor selected. Call `step()` first.")
+            raise ValueError("No sensor selected. Call `step()` first.")
 
         # A latitude e longitude são constantes para o sensor atual
         lat = self.cache["data_from_current_sensor"][self.LATITUDE_TAG].iloc[0]
         lon = self.cache["data_from_current_sensor"][self.LONGITUDE_TAG].iloc[0]
         return lat, lon
-    
+
     def get_current_sensor_time(self):
         """
         Obtém o tempo atual do sensor com base no índice de tempo atual.
@@ -327,13 +346,15 @@ class SensorManager:
             raise ValueError("Nenhum sensor selecionado. Chame `step()` primeiro.")
 
         # Obtendo o valor do tempo com base no índice de tempo atual
-        current_time = self.cache["data_from_current_sensor"][self.TIME_TAG].iloc[self.state_tracker["current_time_index"]]
+        current_time = self.cache["data_from_current_sensor"][self.TIME_TAG].iloc[
+            self.state_tracker["current_time_index"]
+        ]
         return current_time
-
 
     # IN DEVELOPMENT
     def find_sensors_in_region(
-            self, lat_min: float, lat_max: float, lon_min: float, lon_max: float) -> list:
+        self, lat_min: float, lat_max: float, lon_min: float, lon_max: float
+    ) -> list:
         """
         Encontra sensores dentro de uma região geográfica especificada.
 
@@ -347,21 +368,27 @@ class SensorManager:
             list: Lista de sensor_ids que estão dentro da região especificada.
         """
         region_data = self.data[
-            (self.data[self.LATITUDE_TAG] >= lat_min) &
-            (self.data[self.LONGITUDE_TAG] >= lon_min) &
-            (self.data[self.LATITUDE_TAG] <= lat_max) &
-            (self.data[self.LONGITUDE_TAG] <= lon_max)
+            (self.data[self.LATITUDE_TAG] >= lat_min)
+            & (self.data[self.LONGITUDE_TAG] >= lon_min)
+            & (self.data[self.LATITUDE_TAG] <= lat_max)
+            & (self.data[self.LONGITUDE_TAG] <= lon_max)
         ]
         sensors_in_region = region_data[self.SENSOR_ID_TAG].unique().tolist()
         logger.info(
-            f"{len(sensors_in_region)} sensores encontrados na região especificada.")
+            f"{len(sensors_in_region)} sensores encontrados na região especificada."
+        )
         return sensors_in_region
 
     # UPDATE ─────────────────────────────────────────────────────
-    def get_bootstrap_neighbors(self, n_bootstrap: int = 20,
-                            n_neighbors_max: int = 5, n_neighbors_min: int = 2,
-                            time_window: int = -1, distance_window: int = -1,
-                            force_recompute: bool = True) -> list:
+    def get_bootstrap_neighbors(
+        self,
+        n_bootstrap: int = 20,
+        n_neighbors_max: int = 5,
+        n_neighbors_min: int = 2,
+        time_window: int = -1,
+        distance_window: int = -1,
+        force_recompute: bool = True,
+    ) -> list:
         """
         For a locked sensor, generate multiple sets of neighbors (e.g., 20 sets) using the
         underlying random selection. This method bypasses the standard caching used in
@@ -379,18 +406,22 @@ class SensorManager:
             list: A list of pd.DataFrame objects, each containing a set of neighbors.
         """
         current_step = self.state_tracker["current_step"]
-        
+
         # Check if bootstrap neighbors exist and correspond to the current step.
-        if (not force_recompute and 
-            self.cache.get("bootstrap_neighbors") is not None and 
-            self.cache.get("bootstrap_neighbors_step") == current_step):
+        if (
+            not force_recompute
+            and self.cache.get("bootstrap_neighbors") is not None
+            and self.cache.get("bootstrap_neighbors_step") == current_step
+        ):
             return self.cache["bootstrap_neighbors"]
 
         bootstrap_neighbors = []
         # Loop to generate n_bootstrap different neighbor sets.
         for _ in range(n_bootstrap):
             # Call _compute_neighbors directly (bypassing the cache in get_neighbors)
-            neighbors = self._compute_neighbors(n_neighbors_min, n_neighbors_max, time_window)
+            neighbors = self._compute_neighbors(
+                n_neighbors_min, n_neighbors_max, time_window
+            )
             bootstrap_neighbors.append(neighbors)
 
         # Store the generated neighbor sets and the current step in the cache.
@@ -398,22 +429,22 @@ class SensorManager:
         self.cache["bootstrap_neighbors_step"] = current_step
 
         return bootstrap_neighbors
-    
+
     def get_bootstrap_neighbors_deltas(
-    self,
-    n_bootstrap: int = 20,
-    n_neighbors_max: int = 5,
-    n_neighbors_min: int = 2,
-    time_window: int = -1,
-    distance_window: int = -1,
-    force_recompute: bool = True
-) -> Tuple[list, float]:
+        self,
+        n_bootstrap: int = 20,
+        n_neighbors_max: int = 5,
+        n_neighbors_min: int = 2,
+        time_window: int = -1,
+        distance_window: int = -1,
+        force_recompute: bool = True,
+    ) -> Tuple[list, float]:
         """
         For a locked sensor, generate multiple sets of neighbor deltas using bootstrap.
-        
+
         This method calculates the deltas for each bootstrap neighbor set (using the target sensor as reference)
         and returns a list of delta DataFrames along with a single ground truth value (the 'y' of the target sensor).
-        
+
         Args:
             n_bootstrap (int): Number of bootstrap samples to generate.
             n_neighbors_max (int): Maximum number of neighbors.
@@ -421,7 +452,7 @@ class SensorManager:
             time_window (int): Time window for neighbor search.
             distance_window (int): Distance window (unused currently).
             force_recompute (bool): If True, force regeneration even if cached.
-        
+
         Returns:
             Tuple[list, float]:
                 - A list of pd.DataFrame objects, each containing the computed deltas for one bootstrap sample.
@@ -438,16 +469,15 @@ class SensorManager:
             n_neighbors_min=n_neighbors_min,
             time_window=time_window,
             distance_window=distance_window,
-            force_recompute=force_recompute
+            force_recompute=force_recompute,
         )
-        
+
         bootstrap_deltas = []
         # For each bootstrap neighbor set, compute the deltas with the target sensor as reference
         for neighbors in bootstrap_neighbors_list:
             deltas = self._compute_deltas(neighbors, target_sensor)
             bootstrap_deltas.append(deltas)
-        
-        return bootstrap_deltas, ground_truth
 
+        return bootstrap_deltas, ground_truth
 
     # ────────────────────────────────────────────────────────────────────────

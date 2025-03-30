@@ -35,7 +35,8 @@ validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
 total_training_steps = 1_000_000
-n_bootstrap = 20
+n_bootstrap = 2
+n_eval = 5
 
 agent_parameters = {
     "lr": 0.1,
@@ -75,6 +76,8 @@ eval_callback = EvalCallback(
     log_path="./logs/",
     tensorboard_log="./logs/tensorboard",
     eval_freq=10_000,
+    n_eval=n_eval,
+    n_bootstrap=n_bootstrap,
 )
 
 

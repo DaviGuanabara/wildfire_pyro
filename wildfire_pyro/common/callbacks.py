@@ -290,7 +290,6 @@ class EventCallback(BaseCallback):
         return True
 
 
-
 @dataclass
 class EvaluationResult:
     model_error: float
@@ -299,21 +298,19 @@ class EvaluationResult:
     baseline_std: float = np.nan
     epsilon: float = 1e-8  # para evitar divisão por zero
     model_win_rate_over_baseline: float = np.nan
-    
 
     def has_baseline(self) -> bool:
         return not np.isnan(self.baseline_error)
-        
 
 
-#TODO:
+# TODO:
 # std error is not working,
 # it is returning 0.
 class EvalCallback(EventCallback):
     def __init__(
         self,
         evaluation_environment: BaseEnvironment,
-        error_function: Optional[Callable[[Any, Any], Any]] = None,  # More general name
+        error_function: Optional[Callable[[Any, Any], Any]] = None,
         n_eval: int = 5,
         n_bootstrap: int = 4,
         eval_freq: int = 1000,
@@ -337,55 +334,56 @@ class EvalCallback(EventCallback):
 
         self.tb_logger = TensorBoardLogger(log_dir=tensorboard_log)
 
-
         self.best_model_save_path = best_model_save_path
-        
+
         self.comparison_history: List[int] = []
         self.rolling_window_size = 100
 
-
     def _evaluate_learner(self) -> EvaluationResult:
-
         """Evaluates the learner using the error function."""
         self.evaluation_environment.reset()
-        
+
         model_predictions = []
         model_errors = []
         baseline_errors = []
 
         for _ in range(self.n_eval):
-            model_action, _, model_error = self.bootstrap_evaluation(
-                self.n_bootstrap)
+            model_action, _, model_error = self.bootstrap_evaluation(self.n_bootstrap)
             _, _, baseline_error = self.baseline_evaluation()
-            
+
             model_predictions.append(model_action)
             model_errors.append(model_error)
             baseline_errors.append(baseline_error)
-        
+
+        # print(model_errors)
         mean_model_error = np.mean(model_errors)
         std_model_error = np.std(model_errors)
         mean_baseline_error = np.mean(baseline_errors)
         std_baseline_error = np.std(baseline_errors)
-        
-        #Model Over Baseline
+
+        # Model Over Baseline
         # This metric quantifies the win rate of the model over the baseline.
-        comparison = int(
-            abs(mean_model_error) < abs(mean_baseline_error))
+        comparison = int(abs(mean_model_error) < abs(mean_baseline_error))
         self.comparison_history.append(comparison)
 
         if len(self.comparison_history) > self.rolling_window_size:
             self.comparison_history.pop(0)
-            
+
         model_win_rate = np.mean(self.comparison_history)
-        
+
         # Data flow
         results = EvaluationResult(
-            mean_model_error, std_model_error, mean_baseline_error, std_baseline_error, model_win_rate)
-        
+            mean_model_error,
+            std_model_error,
+            mean_baseline_error,
+            std_baseline_error,
+            model_win_rate,
+        )
+
         # STEP to forward environment
         mean_model_predictions = np.mean(model_predictions, axis=0)
         self.evaluation_environment.step(mean_model_predictions)
-        
+
         return results
 
     def bootstrap_evaluation(self, n_bootstrap) -> tuple[float, float, float]:
@@ -394,6 +392,8 @@ class EvalCallback(EventCallback):
             self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
         )
 
+        # print("bootstrap observations:")
+        # print(bootstrap_observations)
         actions = []
         for obs in bootstrap_observations:
             action, _ = self.learner.predict(obs)
@@ -410,9 +410,11 @@ class EvalCallback(EventCallback):
         """Evaluates the baseline using the error function.
         must be called after bootstrap evaluation"""
 
-        mean_prediction, std_prediction, ground_truth = self.evaluation_environment.baseline()
+        mean_prediction, std_prediction, ground_truth = (
+            self.evaluation_environment.baseline()
+        )
         error = self._compute_errors(mean_prediction, ground_truth)
-        
+
         return mean_prediction, std_prediction, error
 
     def _compute_errors(self, mean_prediction, ground_truth) -> float:
@@ -425,21 +427,17 @@ class EvalCallback(EventCallback):
             error = error.item() if isinstance(error, torch.Tensor) else float(error)
 
         else:
-            error = self.error_function(
-                mean_prediction, ground_truth
-            )
-            
+            error = self.error_function(mean_prediction, ground_truth)
+
         return error
-    
+
     def _on_step(self) -> bool:
         """Runs evaluation and logs results."""
         if self.eval_freq <= 0 or self.n_calls % self.eval_freq != 0:
             return True
-        
-        results: EvaluationResult = self._evaluate_learner()
-        
 
-        
+        results: EvaluationResult = self._evaluate_learner()
+
         self._store_numpy_logs(results)
         self._print_console_logs(results)
         self._log_to_learner_logger(results)
@@ -471,18 +469,23 @@ class EvalCallback(EventCallback):
                 )
 
     def _log_to_tensorboard(self, results: EvaluationResult):
-        self.tb_logger \
-            .log_scalar("eval/model/batch_error", results.model_error, self.num_timesteps) \
-            .log_scalar("eval/model/std_error", results.model_std, self.num_timesteps)
+        self.tb_logger.log_scalar(
+            "eval/model/batch_error", results.model_error, self.num_timesteps
+        ).log_scalar("eval/model/std_error", results.model_std, self.num_timesteps)
 
         if results.has_baseline():
-            self.tb_logger.log_scalar("eval/model/win_rate_over_baseline",
-                                      results.model_win_rate_over_baseline, self.num_timesteps)
+            self.tb_logger.log_scalar(
+                "eval/model/win_rate_over_baseline",
+                results.model_win_rate_over_baseline,
+                self.num_timesteps,
+            )
 
         self.tb_logger.flush()
 
     def _log_to_learner_logger(self, results: EvaluationResult):
-        if not hasattr(self.learner, "logger") or not isinstance(self.learner.logger, Logger):
+        if not hasattr(self.learner, "logger") or not isinstance(
+            self.learner.logger, Logger
+        ):
             return
 
         self.learner.logger.record("eval/batch_error", results.model_error)
@@ -490,15 +493,10 @@ class EvalCallback(EventCallback):
         self.learner.logger.record("time/total_timesteps", self.num_timesteps)
         self.learner.logger.dump(self.num_timesteps)
 
-
     def _save_best_model(self, model_error: float):
         if model_error < self.best_batch_error:
             if self.verbose > 0:
                 print("New best model error achieved!")
             if self.best_model_save_path:
-                self.learner.save(os.path.join(
-                    self.best_model_save_path, "best_model"))
+                self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
             self.best_batch_error = model_error
-
-        
-
