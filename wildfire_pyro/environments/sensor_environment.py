@@ -262,11 +262,11 @@ class SensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[float, float]: (mean_y, std_y) if available; otherwise, None.
         """
-        bootstrap_deltas, _ = self.sensor_manager.get_bootstrap_neighbors_deltas(
+        bootstrap_deltas, ground_truth = self.sensor_manager.get_bootstrap_neighbors_deltas(
             force_recompute=False
         )
 
-        mean_y = np.mean([df["y"].mean() for df in bootstrap_deltas])
-        std_y = np.std([df["y"].mean() for df in bootstrap_deltas])
+        prediction = np.mean([df["y"].mean() for df in bootstrap_deltas])
+        standart_deviation = np.std([df["y"].mean() for df in bootstrap_deltas])
 
-        return mean_y, std_y
+        return prediction, standart_deviation, ground_truth

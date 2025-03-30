@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from gymnasium import Env, spaces
 from typing import Any, Tuple, Dict
-
+import numpy as np
 
 class BaseEnvironment(Env, ABC):
     """
@@ -66,5 +66,7 @@ class BaseEnvironment(Env, ABC):
         pass
 
     def baseline(self):
-        """Returns a baseline prediction. Should be overridden if applicable."""
-        return None
+        """Returns a baseline prediction. Should be overridden if applicable.
+        it should return:
+        prediction, standart_deviation, ground_truth"""
+        return np.nan, np.nan, np.nan

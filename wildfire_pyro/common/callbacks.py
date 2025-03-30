@@ -18,6 +18,7 @@
 # ========================================================================================
 
 
+from dataclasses import dataclass
 from .logger import Logger
 import numpy as np
 import gymnasium as gym
@@ -30,10 +31,7 @@ from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
 import torch
 
 
-try:
-    from torch.utils.tensorboard import SummaryWriter
-except ImportError:
-    SummaryWriter = None  # Handle cases where TensorBoard is missing
+from wildfire_pyro.common.tensorboard import TensorBoardLogger
 
 try:
     from tqdm import TqdmExperimentalWarning
@@ -292,6 +290,25 @@ class EventCallback(BaseCallback):
         return True
 
 
+
+@dataclass
+class EvaluationResult:
+    model_error: float
+    model_std: float
+    baseline_error: float = np.nan
+    baseline_std: float = np.nan
+    epsilon: float = 1e-8  # para evitar divisão por zero
+    model_win_rate_over_baseline: float = np.nan
+    
+
+    def has_baseline(self) -> bool:
+        return not np.isnan(self.baseline_error)
+        
+
+
+#TODO:
+# std error is not working,
+# it is returning 0.
 class EvalCallback(EventCallback):
     def __init__(
         self,
@@ -318,31 +335,58 @@ class EvalCallback(EventCallback):
         self.evaluations_timesteps = []
         self.all_errors: List[float] = []
 
-        self.tensorboard_log = tensorboard_log
-        self.tb_writer = (
-            SummaryWriter(log_dir=tensorboard_log) if tensorboard_log else None
-        )
+        self.tb_logger = TensorBoardLogger(log_dir=tensorboard_log)
+
 
         self.best_model_save_path = best_model_save_path
+        
+        self.comparison_history: List[int] = []
+        self.rolling_window_size = 100
 
-    def _evaluate_learner(self) -> tuple[float, float, float]:
+
+    def _evaluate_learner(self) -> EvaluationResult:
+
         """Evaluates the learner using the error function."""
         self.evaluation_environment.reset()
-        errors = []
+        
+        model_predictions = []
+        model_errors = []
+        baseline_errors = []
 
         for _ in range(self.n_eval):
-            mean_prediction, _, error = self.bootstrap_evaluation(self.n_bootstrap)
-            errors.append(error)
-            self.all_errors.append(error)
-            self.evaluation_environment.step(mean_prediction)
+            model_action, _, model_error = self.bootstrap_evaluation(
+                self.n_bootstrap)
+            _, _, baseline_error = self.baseline_evaluation()
+            
+            model_predictions.append(model_action)
+            model_errors.append(model_error)
+            baseline_errors.append(baseline_error)
+        
+        mean_model_error = np.mean(model_errors)
+        std_model_error = np.std(model_errors)
+        mean_baseline_error = np.mean(baseline_errors)
+        std_baseline_error = np.std(baseline_errors)
+        
+        #Model Over Baseline
+        # This metric quantifies the win rate of the model over the baseline.
+        comparison = int(
+            abs(mean_model_error) < abs(mean_baseline_error))
+        self.comparison_history.append(comparison)
 
-        # Compute smoothed error using the last 100 evaluations
-        if self.all_errors:
-            smoothed_error = np.mean(self.all_errors[-100:])
-        else:
-            smoothed_error = np.nan  # Avoid errors if empty
-
-        return np.mean(errors), np.std(errors), smoothed_error
+        if len(self.comparison_history) > self.rolling_window_size:
+            self.comparison_history.pop(0)
+            
+        model_win_rate = np.mean(self.comparison_history)
+        
+        # Data flow
+        results = EvaluationResult(
+            mean_model_error, std_model_error, mean_baseline_error, std_baseline_error, model_win_rate)
+        
+        # STEP to forward environment
+        mean_model_predictions = np.mean(model_predictions, axis=0)
+        self.evaluation_environment.step(mean_model_predictions)
+        
+        return results
 
     def bootstrap_evaluation(self, n_bootstrap) -> tuple[float, float, float]:
         """Performs a single bootstrap evaluation."""
@@ -350,14 +394,28 @@ class EvalCallback(EventCallback):
             self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
         )
 
-        predictions = []
+        actions = []
         for obs in bootstrap_observations:
             action, _ = self.learner.predict(obs)
-            predictions.append(action.item())
+            actions.append(action.item())
 
-        mean_prediction = np.mean(predictions)
-        std_prediction = np.std(predictions)
+        mean_action = np.mean(actions)
+        std_action = np.std(actions)
 
+        error = self._compute_errors(mean_action, ground_truth)
+
+        return mean_action, std_action, error
+
+    def baseline_evaluation(self) -> tuple[float, float, float]:
+        """Evaluates the baseline using the error function.
+        must be called after bootstrap evaluation"""
+
+        mean_prediction, std_prediction, ground_truth = self.evaluation_environment.baseline()
+        error = self._compute_errors(mean_prediction, ground_truth)
+        
+        return mean_prediction, std_prediction, error
+
+    def _compute_errors(self, mean_prediction, ground_truth) -> float:
         # Handle both PyTorch losses and custom functions
         pred_tensor = torch.tensor(mean_prediction, dtype=torch.float32)
         gt_tensor = torch.tensor(ground_truth, dtype=torch.float32)
@@ -369,61 +427,78 @@ class EvalCallback(EventCallback):
         else:
             error = self.error_function(
                 mean_prediction, ground_truth
-            )  # Assume user-defined function works on floats
-
-        return mean_prediction, std_prediction, error
-
+            )
+            
+        return error
+    
     def _on_step(self) -> bool:
         """Runs evaluation and logs results."""
-        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-            batch_error, std_error, smoothed_error = self._evaluate_learner()
+        if self.eval_freq <= 0 or self.n_calls % self.eval_freq != 0:
+            return True
+        
+        results: EvaluationResult = self._evaluate_learner()
+        
 
-            if self.log_path:
-                self.evaluations_timesteps.append(self.num_timesteps)
-                self.evaluations_results.append(batch_error)
-                np.savez(
-                    self.log_path,
-                    timesteps=self.evaluations_timesteps,
-                    results=self.evaluations_results,
-                )
-
-            if self.verbose > 0:
-                print(
-                    f"[Evaluation] Num Timesteps: {self.num_timesteps} | Mean Error: {batch_error:.4f} | Std Error: {std_error:.4f}"
-                )
-
-            if hasattr(self.learner, "logger") and isinstance(
-                self.learner.logger, Logger
-            ):
-                self.learner.logger.record(
-                    "eval/batch_error", batch_error
-                )  # Fix naming
-                self.learner.logger.record("eval/std_error", std_error)
-                self.learner.logger.record("eval/smoothed_error", smoothed_error)
-                self.learner.logger.record("time/total_timesteps", self.num_timesteps)
-                self.learner.logger.dump(self.num_timesteps)
-
-            if self.tb_writer:
-                self.tb_writer.add_scalar(
-                    "eval/raw_error", batch_error, self.num_timesteps
-                )
-                self.tb_writer.add_scalar(
-                    "eval/smoothed_error", smoothed_error, self.num_timesteps
-                )
-                self.tb_writer.add_scalar(
-                    "eval/std_error", std_error, self.num_timesteps
-                )
-                self.tb_writer.flush()
-
-            if batch_error < self.best_batch_error:
-                if self.verbose > 0:
-                    print("New best batch error achieved!")
-                if self.best_model_save_path:
-                    self.learner.save(
-                        os.path.join(self.best_model_save_path, "best_model")
-                    )
-                self.best_batch_error = (
-                    batch_error  # Keep for comparison in next evaluations
-                )
+        
+        self._store_numpy_logs(results)
+        self._print_console_logs(results)
+        self._log_to_learner_logger(results)
+        self._log_to_tensorboard(results)
+        self._save_best_model(results.model_error)
 
         return True
+
+    def _store_numpy_logs(self, results: EvaluationResult):
+        if not self.log_path:
+            return
+        self.evaluations_timesteps.append(self.num_timesteps)
+        self.evaluations_results.append(results.model_error)
+        np.savez(
+            self.log_path,
+            timesteps=self.evaluations_timesteps,
+            results=self.evaluations_results,
+        )
+
+    def _print_console_logs(self, results: EvaluationResult):
+        if self.verbose > 0:
+            print(
+                f"[Evaluation] Timesteps: {self.num_timesteps} | "
+                f"Model Error: {results.model_error:.4f} ± {results.model_std:.4f}"
+            )
+            if results.has_baseline():
+                print(
+                    f"Baseline Error: {results.baseline_error:.4f} ± {results.baseline_std:.4f}"
+                )
+
+    def _log_to_tensorboard(self, results: EvaluationResult):
+        self.tb_logger \
+            .log_scalar("eval/model/batch_error", results.model_error, self.num_timesteps) \
+            .log_scalar("eval/model/std_error", results.model_std, self.num_timesteps)
+
+        if results.has_baseline():
+            self.tb_logger.log_scalar("eval/model/win_rate_over_baseline",
+                                      results.model_win_rate_over_baseline, self.num_timesteps)
+
+        self.tb_logger.flush()
+
+    def _log_to_learner_logger(self, results: EvaluationResult):
+        if not hasattr(self.learner, "logger") or not isinstance(self.learner.logger, Logger):
+            return
+
+        self.learner.logger.record("eval/batch_error", results.model_error)
+        self.learner.logger.record("eval/std_error", results.model_std)
+        self.learner.logger.record("time/total_timesteps", self.num_timesteps)
+        self.learner.logger.dump(self.num_timesteps)
+
+
+    def _save_best_model(self, model_error: float):
+        if model_error < self.best_batch_error:
+            if self.verbose > 0:
+                print("New best model error achieved!")
+            if self.best_model_save_path:
+                self.learner.save(os.path.join(
+                    self.best_model_save_path, "best_model"))
+            self.best_batch_error = model_error
+
+        
+

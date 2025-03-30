@@ -34,7 +34,7 @@ train_data = get_path("fixed_train.csv")
 validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
-total_training_steps = 1_000
+total_training_steps = 1_000_000
 n_bootstrap = 20
 
 agent_parameters = {
@@ -74,7 +74,7 @@ eval_callback = EvalCallback(
     best_model_save_path="./logs/",
     log_path="./logs/",
     tensorboard_log="./logs/tensorboard",
-    eval_freq=500,
+    eval_freq=10_000,
 )
 
 
@@ -84,7 +84,8 @@ deep_set = create_deep_set_learner(train_environment, agent_parameters)
 # ==================================================================================================
 # LEARNING
 # Executa o processo de aprendizagem
-# TODO: ADICIONAR MÉTRICAS DE APRENDIZAGEM (Adicionar o KNN como baselien da validação ?)
+# TODO: Add multiple environments for training to boost performance
+# each environment in its own thread
 # ==================================================================================================
 
 train_environment.reset(seed)
