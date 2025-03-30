@@ -306,6 +306,7 @@ class EvaluationResult:
 # TODO:
 # std error is not working,
 # it is returning 0.
+# TODO: change name from evalcallback to bootstrap_evalcallback ?
 class EvalCallback(EventCallback):
     def __init__(
         self,

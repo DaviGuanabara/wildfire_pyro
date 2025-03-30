@@ -26,6 +26,19 @@ This project focuses on **spatiotemporal machine learning** using **deep sets of
 
 The framework follows **Farama Gymnasium** conventions for easy integration with reinforcement learning environments.
 
+### 🧩 Programming Paradigm
+Although this project performs supervised learning, it adopts an architectural style inspired by agent-environment interaction loops, commonly found in reinforcement learning systems.
+
+This interaction-centric architecture enables:
+
+Clear separation between data, model, and evaluation loop.
+
+Use of bootstrap-based evaluation for realistic uncertainty modeling.
+
+Simple integration of callbacks, logging, and monitoring tools such as TensorBoard and progress bars.
+
+This style enhances modularity, readability, and future extensibility, while retaining the clarity and expressiveness of supervised workflows.
+
 ---
 
 ## Purpose and Context
