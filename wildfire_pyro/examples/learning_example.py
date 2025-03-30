@@ -69,7 +69,8 @@ test_environment = SensorEnvironment(
     n_neighbors_max=n_neighbors_max,
 )
 
-
+#TODO: Escolher um nome mais significativo
+#talvez "BootstrapEvaluationCallback"
 eval_callback = EvalCallback(
     validation_environment,
     best_model_save_path="./logs/",
@@ -105,6 +106,7 @@ print("Aprendizagem concluída")
 # INFERENCE
 # Teste de inferência após o treinamento com Bootstrap
 # O treinamento segue a ideia de gerar N conjuntos de vizinhos para estimar a incerteza.
+# TODO: Adicionar o Baseline do Environment para comparação com o modelo gerado.
 # ==================================================================================================
 
 print("\n=== Starting Bootstrap Evaluation ===")
