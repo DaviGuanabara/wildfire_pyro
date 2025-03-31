@@ -296,8 +296,8 @@ class EvaluationResult:
     model_std: float
     baseline_error: float = np.nan
     baseline_std: float = np.nan
-    epsilon: float = 1e-8  # para evitar divisão por zero
     model_win_rate_over_baseline: float = np.nan
+    epsilon: float = 1e-8  # para evitar divisão por zero
 
     def has_baseline(self) -> bool:
         return not np.isnan(self.baseline_error)
