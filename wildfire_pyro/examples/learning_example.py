@@ -6,7 +6,7 @@ from wildfire_pyro.factories.learner_factory import (
     create_deep_set_learner,
 )
 
-from wildfire_pyro.common.callbacks import EvalCallback
+from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
 
 print("Learning Example está em construção")
 
@@ -34,7 +34,7 @@ train_data = get_path("fixed_train.csv")
 validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
-total_training_steps = 1_000_000
+total_training_steps = 20_000
 n_bootstrap = 2
 n_eval = 5
 
@@ -69,14 +69,12 @@ test_environment = SensorEnvironment(
     n_neighbors_max=n_neighbors_max,
 )
 
-#TODO: Escolher um nome mais significativo
-#talvez "BootstrapEvaluationCallback"
-eval_callback = EvalCallback(
+eval_callback = BootstrapEvaluationCallback(
     validation_environment,
     best_model_save_path="./logs/",
     log_path="./logs/",
     tensorboard_log="./logs/tensorboard",
-    eval_freq=10_000,
+    eval_freq=1_000,
     n_eval=n_eval,
     n_bootstrap=n_bootstrap,
 )
@@ -88,7 +86,7 @@ deep_set = create_deep_set_learner(train_environment, agent_parameters)
 # ==================================================================================================
 # LEARNING
 # Executa o processo de aprendizagem
-# TODO: Add multiple environments for training to boost performance
+# TODO: Add multiple environments for training to boost performance ?
 # each environment in its own thread
 # ==================================================================================================
 
@@ -106,7 +104,6 @@ print("Aprendizagem concluída")
 # INFERENCE
 # Teste de inferência após o treinamento com Bootstrap
 # O treinamento segue a ideia de gerar N conjuntos de vizinhos para estimar a incerteza.
-# TODO: Adicionar o Baseline do Environment para comparação com o modelo gerado.
 # ==================================================================================================
 
 print("\n=== Starting Bootstrap Evaluation ===")
@@ -118,6 +115,8 @@ for step in range(2):
         n_bootstrap
     )
 
+    baseline_prediction, baseline_std, baseline_ground_truth = test_environment.baseline()
+
     predictions = []
     for obs in bootstrap_observations:
         action, _ = deep_set.predict(obs)
@@ -126,16 +125,26 @@ for step in range(2):
     mean_prediction = np.mean(predictions)
     std_prediction = np.std(predictions)
     error = mean_prediction - ground_truth
+    baseline_error = baseline_prediction - ground_truth
 
     print(f"\n--- Step {step} ---")
     print(f">> Evaluating Sensor (ID: {info['sensor']['sensor_id']})")
     print(
-        f"   Location: Latitude {info['sensor']['lat']:.4f}, Longitude {info['sensor']['lon']:.4f}, y {info['ground_truth']:.4f}"
+        f"   Location: Latitude {info['sensor']['lat']:.4f}, "
+        f"Longitude: {info['sensor']['lon']:.4f}, "
+        f"Ground Truth: {ground_truth:.4f}"
     )
+
+    print(">> Bootstrap Model:")
     print(
-        f">> Bootstrap Results: Mean Prediction: {mean_prediction:.4f}, "
-        f"Std Dev: {std_prediction:.4f}, Ground Truth: {ground_truth:.4f}, "
+        f"   Prediction: {mean_prediction:.4f} ± {std_prediction:.4f} | "
         f"Error: {error:.4f}"
+    )
+
+    print(">> Baseline:")
+    print(
+        f"   Prediction: {baseline_prediction:.4f} ± {baseline_std:.4f} | "
+        f"Error: {baseline_error:.4f}"
     )
 
     # Move to the next sensor
@@ -147,6 +156,7 @@ for step in range(2):
     if terminated:
         print("\nThe episode has ended.")
         break
+
 
 
 test_environment.close()

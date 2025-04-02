@@ -42,6 +42,31 @@ class SensorEnvironment(BaseEnvironment):
         # Definir espaços de observação e ação
         self._define_spaces()
 
+        self._define_context_handlers()
+
+    def _define_context_handlers(self):
+        self._context_handlers["EvaluationMetrics"] = self.on_evalmetrics
+
+
+    def on_evalmetrics(self, context):
+        """
+        Handler for evaluation metrics context. This method is automatically called
+        by the environment's `receive_context()` middleware when the context_type
+        is 'EvaluationMetrics'.
+
+        You can use this hook to:
+        - Log custom metrics
+        - Adapt internal state based on performance
+        - Store evaluation history
+        - Trigger side-effects (like alerts or saving diagnostics)
+
+        Args:
+            context (EvaluationMetrics): The evaluation result dataclass.
+        """
+
+        print("Environment on_evalmetrics triggered, context:")
+        print(context)
+
     def _define_spaces(self):
         """
         Define os espaços de observação e ação.

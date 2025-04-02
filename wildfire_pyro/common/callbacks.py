@@ -18,11 +18,10 @@
 # ========================================================================================
 
 
-from dataclasses import dataclass
+from dataclasses import asdict
 from .logger import Logger
 import numpy as np
-import gymnasium as gym
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union, List
+from typing import TYPE_CHECKING, Any, Callable, Optional, List
 from abc import ABC, abstractmethod
 import warnings
 import os
@@ -30,7 +29,7 @@ from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
 import torch
 
-
+from wildfire_pyro.common.messages import EvaluationMetrics
 from wildfire_pyro.common.tensorboard import TensorBoardLogger
 
 try:
@@ -290,24 +289,7 @@ class EventCallback(BaseCallback):
         return True
 
 
-@dataclass
-class EvaluationResult:
-    model_error: float
-    model_std: float
-    baseline_error: float = np.nan
-    baseline_std: float = np.nan
-    model_win_rate_over_baseline: float = np.nan
-    epsilon: float = 1e-8  # para evitar divisão por zero
-
-    def has_baseline(self) -> bool:
-        return not np.isnan(self.baseline_error)
-
-
-# TODO:
-# std error is not working,
-# it is returning 0.
-# TODO: change name from evalcallback to bootstrap_evalcallback ?
-class EvalCallback(EventCallback):
+class BootstrapEvaluationCallback(EventCallback):
     def __init__(
         self,
         evaluation_environment: BaseEnvironment,
@@ -340,7 +322,8 @@ class EvalCallback(EventCallback):
         self.comparison_history: List[int] = []
         self.rolling_window_size = 100
 
-    def _evaluate_learner(self) -> EvaluationResult:
+
+    def _evaluate_learner(self) -> EvaluationMetrics:
         """Evaluates the learner using the error function."""
         self.evaluation_environment.reset()
 
@@ -373,13 +356,14 @@ class EvalCallback(EventCallback):
         model_win_rate = np.mean(self.comparison_history)
 
         # Data flow
-        results = EvaluationResult(
-            mean_model_error,
-            std_model_error,
-            mean_baseline_error,
-            std_baseline_error,
-            model_win_rate,
+        results = EvaluationMetrics(
+            model_error=mean_model_error,
+            model_std=std_model_error,
+            baseline_error=mean_baseline_error,
+            baseline_std=std_baseline_error,
+            model_win_rate_over_baseline=model_win_rate,
         )
+
 
         # STEP to forward environment
         mean_model_predictions = np.mean(model_predictions, axis=0)
@@ -393,8 +377,6 @@ class EvalCallback(EventCallback):
             self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
         )
 
-        # print("bootstrap observations:")
-        # print(bootstrap_observations)
         actions = []
         for obs in bootstrap_observations:
             action, _ = self.learner.predict(obs)
@@ -437,7 +419,9 @@ class EvalCallback(EventCallback):
         if self.eval_freq <= 0 or self.n_calls % self.eval_freq != 0:
             return True
 
-        results: EvaluationResult = self._evaluate_learner()
+        results: EvaluationMetrics = self._evaluate_learner()
+        
+        self.evaluation_environment.receive_context(asdict(results))
 
         self._store_numpy_logs(results)
         self._print_console_logs(results)
@@ -447,7 +431,7 @@ class EvalCallback(EventCallback):
 
         return True
 
-    def _store_numpy_logs(self, results: EvaluationResult):
+    def _store_numpy_logs(self, results: EvaluationMetrics):
         if not self.log_path:
             return
         self.evaluations_timesteps.append(self.num_timesteps)
@@ -458,7 +442,7 @@ class EvalCallback(EventCallback):
             results=self.evaluations_results,
         )
 
-    def _print_console_logs(self, results: EvaluationResult):
+    def _print_console_logs(self, results: EvaluationMetrics):
         if self.verbose > 0:
             print(
                 f"[Evaluation] Timesteps: {self.num_timesteps} | "
@@ -469,7 +453,7 @@ class EvalCallback(EventCallback):
                     f"Baseline Error: {results.baseline_error:.4f} ± {results.baseline_std:.4f}"
                 )
 
-    def _log_to_tensorboard(self, results: EvaluationResult):
+    def _log_to_tensorboard(self, results: EvaluationMetrics):
         self.tb_logger.log_scalar(
             "eval/model/batch_error", results.model_error, self.num_timesteps
         ).log_scalar("eval/model/std_error", results.model_std, self.num_timesteps)
@@ -483,7 +467,7 @@ class EvalCallback(EventCallback):
 
         self.tb_logger.flush()
 
-    def _log_to_learner_logger(self, results: EvaluationResult):
+    def _log_to_learner_logger(self, results: EvaluationMetrics):
         if not hasattr(self.learner, "logger") or not isinstance(
             self.learner.logger, Logger
         ):
