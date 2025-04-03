@@ -94,10 +94,11 @@ class SensorEnvironment(BaseEnvironment):
         Returns:
             Tuple[np.ndarray, dict]: Observação inicial e informações adicionais.
         """
-        self.current_step = 0
 
+        super().reset(seed)
         self.sensor_manager.reset(seed)
 
+        self.current_step = 0
         observation, self.ground_truth = self._generate_observation()
 
         return observation, {

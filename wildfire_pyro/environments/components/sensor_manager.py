@@ -206,21 +206,43 @@ class SensorManager:
         self, candidates: pd.DataFrame, num_neighbors: int
     ) -> pd.DataFrame:
         """
-        Randomly selects neighbors from the filtered candidate pool.
+        Randomly selects neighbors from the filtered candidate pool in a fully reproducible way.
+
+        For each selected sensor, a single row is sampled using a fixed per-sensor seed
+        derived from the main RNG. This ensures the result is stable across runs given the same seed.
         """
+
+        # Identify all unique sensors available in the candidates
         unique_sensors = candidates[self.SENSOR_ID_TAG].unique()
+
+        # Randomly choose which sensors will be selected
         selected_sensors = self.rng.choice(
             unique_sensors,
             size=num_neighbors,
-            replace=num_neighbors > len(unique_sensors),
+            replace=(num_neighbors > len(unique_sensors)),
         )
 
-        return (
-            candidates[candidates[self.SENSOR_ID_TAG].isin(selected_sensors)]
+        # Initialize a secondary RNG to assign deterministic seeds for each selected sensor
+        seed_rng = np.random.default_rng(self.rng.integers(1e9))
+
+        # Build a mapping from sensor_id to its sampling seed
+        sampling_seeds = {
+            sensor_id: seed_rng.integers(1e9) for sensor_id in selected_sensors
+        }
+
+        # Filter candidate rows for the selected sensors
+        selected_rows = candidates[candidates[self.SENSOR_ID_TAG].isin(selected_sensors)]
+
+        # Sample one row per sensor using its assigned seed
+        sampled_neighbors = (
+            selected_rows
             .groupby(self.SENSOR_ID_TAG, group_keys=False)
-            .apply(lambda x: x.sample(1, random_state=self.rng.integers(1e6)))
+            .apply(lambda group: group.sample(n=1, random_state=sampling_seeds[group.name]))
             .reset_index(drop=True)
         )
+
+        return sampled_neighbors
+
 
     def ensure_minimum_neighbors(
         self, n_neighbors_max, n_neighbors_min, time_window, distance_window

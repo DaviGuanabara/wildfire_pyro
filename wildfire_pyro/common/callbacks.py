@@ -301,6 +301,7 @@ class BootstrapEvaluationCallback(EventCallback):
         best_model_save_path: Optional[str] = None,
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
+        seed: int = 42
     ):
         super().__init__(verbose=verbose)
         self.evaluation_environment: BaseEnvironment = evaluation_environment
@@ -321,11 +322,12 @@ class BootstrapEvaluationCallback(EventCallback):
 
         self.comparison_history: List[int] = []
         self.rolling_window_size = 100
+        self.seed = seed
 
 
     def _evaluate_learner(self) -> EvaluationMetrics:
         """Evaluates the learner using the error function."""
-        self.evaluation_environment.reset()
+        self.evaluation_environment.reset(self.seed)
 
         model_predictions = []
         model_errors = []

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from gymnasium import Env, spaces
-from typing import Any, Tuple, Dict
+from gymnasium import Env
+from typing import Any, Tuple, Dict, Optional
 import numpy as np
 
 class BaseEnvironment(Env, ABC):
@@ -70,21 +70,23 @@ class BaseEnvironment(Env, ABC):
         """
         pass
 
-    @abstractmethod
     def reset(
-        self, seed: int = None, options: Dict[str, Any] = None
+        self, seed: int = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[Any, Dict[str, Any]]:
         """
-        Resets the environment to an initial state and returns the initial observation.
+        Default implementation that sets the random seed.
+        Subclasses should override this method to return actual observations.
 
         Args:
-            seed (int, optional): The seed for the environment's random number generator.
-            options (dict, optional): Additional options for resetting the environment.
+            seed (int, optional): Random seed.
+            options (dict, optional): Additional reset options.
 
         Returns:
-            Tuple[Any, Dict[str, Any]]: The initial observation and additional info.
+            Tuple[Any, Dict[str, Any]]: Initial observation and info (empty by default).
         """
-        pass
+        self.seed = seed
+        return None, {}  # Pode ser ajustado para retornar um placeholder padrão
+
 
     @abstractmethod
     def step(self, action: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
