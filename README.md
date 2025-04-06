@@ -65,7 +65,7 @@ This project aims to:
 - Demonstrate **real-world applications** across multiple datasets, including **simulated and real-world taxi flow data**.
 - Leverage **deep learning models with attention mechanisms** to improve prediction accuracy.
 
-The Deep Neural Network model chan be checked
+
 [Deep Neural Network model doc](wildfire_pyro/models/model.markdown)
 
 ---
@@ -77,6 +77,10 @@ The Deep Neural Network model chan be checked
 - **Model Wrapper** → Manages interactions between the model and environment.
 - **Model** → The deep learning model that makes predictions.
 - **Callbacks** → Integrates with the wrapper to extract information while in training.
+
+
+The wrapper implemented is the core of this work and its documentation can be checked at:
+[Supervised Learning Manager (Model Wrapper)](wildfire_pyro/wrappers/wrapper.markdown)
 ---
 
 ## Project Status 🚧
