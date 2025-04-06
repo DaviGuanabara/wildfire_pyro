@@ -1,83 +1,73 @@
-Segue a versão revisada e melhorada do arquivo Markdown:
+# Model Architecture: Flows and Modules
+
+This document describes the model architecture with a focus on data flow and modular organization. The model is designed to process spatial neighborhoods and capture local dependencies using Multi-Layer Perceptrons (MLPs). It is divided into three main modules:
+
+1. **\( \text{MLP}_\phi \):** Generates latent representations for neighborhood data.
+2. **\( \text{MLP}_\theta \):** Computes attention weights for the neighborhoods.
+3. **\( \text{MLP}_\omega \):** Produces the final prediction by aggregating the processed information.
+
+The interaction between these modules follows the flow described in the paper and is illustrated in the diagram below.
+
+## **Reference Diagrams**
+
+![Model Flow](figures/neural_network_architecture.png)
 
 ---
 
-# Arquitetura do Modelo: Fluxos e Módulos
+## **General Model Flow**
 
+The data flow in the model unfolds in three main stages:
 
-Este documento descreve a arquitetura do modelo com foco nos fluxos de dados e na organização modular. O modelo foi projetado para processar vizinhanças espaciais e capturar dependências locais utilizando Perceptrons Multicamadas (MLPs). Ele é dividido em três módulos principais:
+1. **Latent Representation:**  
+   The \( \text{MLP}_\phi \) processes neighborhood vectors to generate rich latent representations, capturing spatial and temporal relationships.
 
-1. **\( \text{MLP}_\phi \):** Gera representações latentes para os dados das vizinhanças.
-2. **\( \text{MLP}_\theta \):** Calcula os pesos de atenção para as vizinhanças.
-3. **\( \text{MLP}_\omega \):** Produz a predição final agregando as informações processadas.
+2. **Attention Calculation:**  
+   The \( \text{MLP}_\theta \) applies importance weights to neighborhood elements using an attention mechanism. This mechanism prioritizes more relevant information, in line with the idea that closer elements (in time and space) have greater influence.
 
-A interação entre esses módulos segue o fluxo descrito no artigo e demonstrado no diagrama abaixo.
-
-## **Diagramas de Referência**
-
-![Fluxo do Modelo](figures/neural_network_architecture.png)
+3. **Final Prediction:**  
+   The \( \text{MLP}_\omega \) combines the weighted representations and produces the final prediction.
 
 ---
 
-## **Fluxo Geral do Modelo**
+## **Background: Attention Mechanism**
 
-O fluxo de dados no modelo ocorre em três etapas principais:
+The attention mechanism, widely used in machine learning, assigns different weights to inputs based on their relevance. It is inspired by the human ability to focus on important aspects of a task while ignoring less significant details. In the context of this model:
 
-1. **Representação Latente:** 
-   O \( \text{MLP}_\phi \) processa os vetores das vizinhanças para gerar uma representação latente rica, capturando relações espaciais e temporais.
-
-2. **Cálculo de Atenção:**
-   O \( \text{MLP}_\theta \) aplica pesos de importância às vizinhanças, utilizando o mecanismo de atenção. Esse mecanismo prioriza informações mais relevantes, alinhado com a ideia de que elementos próximos (no tempo e espaço) têm maior influência.
-
-3. **Predição Final:**
-   O \( \text{MLP}_\omega \) combina as representações ponderadas e produz a predição final.
+- Elements that are closer in space and time are considered more important, in accordance with **Tobler’s First Law of Geography**:  
+  “Everything is related to everything else, but near things are more related than distant things.”
+- Attention is computed by \( \text{MLP}_\theta \), which produces normalized weights using a Softmax function, highlighting the most relevant elements.
 
 ---
 
-## **Background: Mecanismo de Atenção**
+## **Module Descriptions**
 
-O mecanismo de atenção, amplamente utilizado em aprendizado de máquina, atribui pesos diferentes às entradas com base em sua relevância. Ele é inspirado pela capacidade humana de focar em aspectos importantes de uma tarefa, enquanto ignora detalhes menos significativos. No contexto deste modelo:
+### **\( \text{MLP}_\phi \): Latent Representation**
+The \( \text{MLP}_\phi \) transforms neighborhood inputs into latent representations. It is composed of **three sequential blocks**, each containing the following steps:
+- **Batch Normalization:** Normalizes input values.
+- **Linear Transformation:** Projects the data into a higher-dimensional space.
+- **Tanh Activation:** Introduces non-linearity to capture complex relationships.
+- **Dropout:** Prevents overfitting by randomly zeroing out neurons.
 
-- Elementos mais próximos no espaço e tempo são considerados mais importantes, em conformidade com a **Lei de Tobler**: "Tudo está relacionado a tudo, mas coisas próximas estão mais relacionadas do que coisas distantes."
-- A atenção é calculada pelo \( \text{MLP}_\theta \), que gera pesos normalizados via Softmax, destacando os elementos mais relevantes.
-
----
-
-## **Descrição dos Módulos**
-
-### **\( \text{MLP}_\phi \): Representação Latente**
-O \( \text{MLP}_\phi \) transforma as entradas das vizinhanças em representações latentes. Sua estrutura é composta por **três blocos sequenciais**, cada um com as seguintes etapas:
-- **Batch Normalization:** Normaliza os valores de entrada.
-- **Linear Transformation:** Aplica uma transformação linear para projetar os dados em um espaço de maior dimensão.
-- **Tanh Activation:** Introduz não-linearidade para capturar relações complexas.
-- **Dropout:** Evita overfitting zerando aleatoriamente parte dos neurônios.
-
-Esses blocos são conectados por somas residuais, permitindo a preservação de informações críticas e a propagação eficiente de gradientes. A saída final do \( \text{MLP}_\phi \) é a soma das saídas intermediárias de todos os blocos.
+These blocks are connected using residual sums, enabling the preservation of critical information and efficient gradient propagation. The final output of \( \text{MLP}_\phi \) is the sum of all intermediate block outputs.
 
 ---
 
-### **\( \text{MLP}_\theta \): Cálculo de Atenção**
-O \( \text{MLP}_\theta \) utiliza a mesma estrutura modular do \( \text{MLP}_\phi \) para calcular pesos de atenção. Ele recebe as mesmas entradas e retorna um conjunto de pesos que representam a relevância de cada elemento da vizinhança.
+### **\( \text{MLP}_\theta \): Attention Calculation**
+The \( \text{MLP}_\theta \) uses the same modular structure as \( \text{MLP}_\phi \) to calculate attention weights. It receives the same input and returns a set of weights representing the relevance of each neighborhood element.
 
-#### **Como funciona a atenção?**
-1. Cada elemento da vizinhança é processado para gerar uma pontuação.
-2. Essas pontuações são normalizadas usando Softmax, de modo que a soma total seja 1.
-3. Os pesos finais indicam a importância relativa de cada elemento.
+#### **How does attention work?**
+1. Each neighborhood element is processed to produce a score.
+2. These scores are normalized using Softmax so that their sum equals 1.
+3. The final weights indicate the relative importance of each element.
 
-Esse processo garante que os dados mais relevantes tenham maior impacto na saída do modelo, enquanto elementos menos significativos são suavizados.
-
----
-
-### **\( \text{MLP}_\omega \): Predição Final**
-O \( \text{MLP}_\omega \) combina as saídas do \( \text{MLP}_\phi \) (representações latentes) e os pesos do \( \text{MLP}_\theta \) para gerar a predição final. Ele aplica os pesos calculados pelo \( \text{MLP}_\theta \) às representações e realiza as seguintes operações:
-
-1. **Agregação:** Combina as informações ponderadas de cada vizinhança.
-2. **Transformação Linear:** Processa a saída agregada para projetá-la no espaço final.
-3. **Regressão:** Gera o valor alvo, como posição ou intensidade de um evento.
+This process ensures that the most relevant data has a stronger impact on the model's output, while less significant elements are attenuated.
 
 ---
 
+### **\( \text{MLP}_\omega \): Final Prediction**
+The \( \text{MLP}_\omega \) combines the outputs of \( \text{MLP}_\phi \) (latent representations) and the weights from \( \text{MLP}_\theta \) to generate the final prediction. It applies the weights computed by \( \text{MLP}_\theta \) to the representations and performs the following operations:
 
-
-
+1. **Aggregation:** Combines the weighted information from each neighborhood.
+2. **Linear Transformation:** Projects the aggregated output into the final space.
+3. **Regression:** Outputs the target value, such as position or intensity of an event.
 

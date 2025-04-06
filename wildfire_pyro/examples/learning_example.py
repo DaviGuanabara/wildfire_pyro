@@ -8,7 +8,10 @@ from wildfire_pyro.factories.learner_factory import (
 
 from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
 
-print("Learning Example está em construção")
+
+# ==================================================================================================
+# Funções adicionais
+# ==================================================================================================
 
 
 def get_path(file_name):
@@ -18,26 +21,49 @@ def get_path(file_name):
     return data_path
 
 
+def log_evaluation(metrics, info, step):
+    print(f"\n--- Step {step} ---")
+    print(f">> Evaluating Sensor (ID: {info["sensor"]['sensor_id']})")
+    print(
+        f"   Location: Latitude {info["sensor"]['lat']:.4f}, Longitude: {info["sensor"]['lon']:.4f}, Ground Truth: {info['ground_truth']:.4f}"
+    )
+    print(">> Bootstrap Model:")
+    print(
+        f"   Prediction: {metrics['mean_prediction']:.4f} ± {metrics['std_prediction']:.4f} | Error: {metrics['error']:.4f}"
+    )
+    print(">> Baseline:")
+    print(
+        f"   Prediction: {metrics['baseline_prediction']:.4f} ± {metrics['baseline_std']:.4f} | Error: {metrics['baseline_error']:.4f}"
+    )
+
+
 # ==================================================================================================
 # SETUP
 # Configurações do ambiente de treinamento e teste
 # Configurações do agente DeepSet
 # ==================================================================================================
 
-
+# Setup environments
 seed = 0
 max_steps = 200000
 n_neighbors_min = 2
 n_neighbors_max = 5
+verbose = False
 
 train_data = get_path("fixed_train.csv")
 validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
+
+# Setup Training
 total_training_steps = 20_000
 n_bootstrap = 2
 n_eval = 5
 
+# Setup Evaluation
+evaluations = 100
+
+# Setup Agent Parameters
 agent_parameters = {
     "lr": 0.1,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
@@ -46,12 +72,17 @@ agent_parameters = {
     "batch_size": 128,
 }
 
+# ==================================================================================================
+# Instantiation
+# ==================================================================================================
+
 
 train_environment = SensorEnvironment(
     data_path=train_data,
     max_steps=max_steps,
     n_neighbors_min=n_neighbors_min,
     n_neighbors_max=n_neighbors_max,
+    verbose=verbose,
 )
 
 validation_environment = SensorEnvironment(
@@ -59,39 +90,40 @@ validation_environment = SensorEnvironment(
     max_steps=max_steps,
     n_neighbors_min=n_neighbors_min,
     n_neighbors_max=n_neighbors_max,
+    verbose=verbose,
 )
-
 
 test_environment = SensorEnvironment(
     data_path=test_data,
     max_steps=max_steps,
     n_neighbors_min=n_neighbors_min,
     n_neighbors_max=n_neighbors_max,
+    verbose=verbose,
 )
 
 eval_callback = BootstrapEvaluationCallback(
     validation_environment,
-    best_model_save_path="./logs/",
-    log_path="./logs/",
-    tensorboard_log="./logs/tensorboard",
+    best_model_save_path="./learning_example/logs/",
+    log_path="./learning_example/logs/",
+    tensorboard_log="./learning_example/logs/tensorboard",
     eval_freq=1_000,
     n_eval=n_eval,
     n_bootstrap=n_bootstrap,
 )
 
 
-deep_set = create_deep_set_learner(train_environment, agent_parameters)
+deep_set_learner = create_deep_set_learner(train_environment, agent_parameters)
 
 
 # ==================================================================================================
 # LEARNING
-# Executa o processo de aprendizagem
+#
 # TODO: Add multiple environments for training to boost performance ?
 # each environment in its own thread
 # ==================================================================================================
 
 train_environment.reset(seed)
-deep_set.learn(
+deep_set_learner.learn(
     total_timesteps=total_training_steps, callback=eval_callback, progress_bar=True
 )
 
@@ -101,61 +133,46 @@ print("Aprendizagem concluída")
 
 
 # ==================================================================================================
-# INFERENCE
-# Teste de inferência após o treinamento com Bootstrap
-# O treinamento segue a ideia de gerar N conjuntos de vizinhos para estimar a incerteza.
+# Evaluation.
 # ==================================================================================================
 
 print("\n=== Starting Bootstrap Evaluation ===")
 observation, info = test_environment.reset()
+wins = []
+metrics = {}
+metrics["sensor_id"] = info["sensor"]["sensor_id"]
 
-for step in range(2):
+for step in range(evaluations):
 
     bootstrap_observations, ground_truth = test_environment.get_bootstrap_observations(
         n_bootstrap
     )
 
-    baseline_prediction, baseline_std, baseline_ground_truth = test_environment.baseline()
+    metrics["baseline_prediction"], metrics["baseline_std"], _ = (
+        test_environment.baseline()
+    )
 
-    actions, _ = deep_set.predict(bootstrap_observations)
+    actions, _ = deep_set_learner.predict(bootstrap_observations)
     predictions = actions.squeeze().tolist()
 
+    metrics["mean_prediction"] = np.mean(predictions)
+    metrics["std_prediction"] = np.std(predictions)
+    metrics["error"] = metrics["mean_prediction"] - ground_truth
+    metrics["baseline_error"] = metrics["baseline_prediction"] - ground_truth
+    metrics["step"] = step
 
-    mean_prediction = np.mean(predictions)
-    std_prediction = np.std(predictions)
-    error = mean_prediction - ground_truth
-    baseline_error = baseline_prediction - ground_truth
+    wins.append(metrics["error"] < metrics["baseline_error"])
 
-    print(f"\n--- Step {step} ---")
-    print(f">> Evaluating Sensor (ID: {info['sensor']['sensor_id']})")
-    print(
-        f"   Location: Latitude {info['sensor']['lat']:.4f}, "
-        f"Longitude: {info['sensor']['lon']:.4f}, "
-        f"Ground Truth: {ground_truth:.4f}"
-    )
+    log_evaluation(metrics, info, step)
 
-    print(">> Bootstrap Model:")
-    print(
-        f"   Prediction: {mean_prediction:.4f} ± {std_prediction:.4f} | "
-        f"Error: {error:.4f}"
-    )
-
-    print(">> Baseline:")
-    print(
-        f"   Prediction: {baseline_prediction:.4f} ± {baseline_std:.4f} | "
-        f"Error: {baseline_error:.4f}"
-    )
-
-    # Move to the next sensor
-    final_prediction = np.array([mean_prediction])
     observation, reward, terminated, truncated, info = test_environment.step(
-        final_prediction
+        np.array(metrics["mean_prediction"])
     )
 
     if terminated:
         print("\nThe episode has ended.")
         break
 
-
+print(f"Final of evaluation. Win Rate: {np.mean(wins)}")
 
 test_environment.close()

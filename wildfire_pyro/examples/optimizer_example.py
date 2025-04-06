@@ -3,19 +3,19 @@ import torch
 import numpy as np
 from wildfire_pyro.environments.sensor_environment import SensorEnvironment
 from wildfire_pyro.factories.learner_factory import (
-    create_deep_set_learner, SupervisedLearningManager
+    create_deep_set_learner,
+    SupervisedLearningManager,
 )
 
 from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
 
 
-print("Learning Example está em construção")
+print("Em construção")
 
 
 def get_path(file_name):
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    relative_path = os.path.join(
-        "data", "synthetic", "fixed_sensor", file_name)
+    relative_path = os.path.join("data", "synthetic", "fixed_sensor", file_name)
     data_path = os.path.join(SCRIPT_DIR, relative_path)
     return data_path
 
@@ -27,7 +27,6 @@ def get_path(file_name):
 # ==================================================================================================
 
 
-
 def training():
     agent_parameters = {
         "lr": 0.1,
@@ -37,13 +36,10 @@ def training():
         "batch_size": 128,
     }
 
-
-
     seed = 0
     max_steps = 200000
     n_neighbors_min = 2
     n_neighbors_max = 5
-
 
     total_training_steps = 20_000
     n_bootstrap = 2
@@ -52,7 +48,6 @@ def training():
     train_data = get_path("fixed_train.csv")
     validation_data = get_path("fixed_val.csv")
     test_data = get_path("fixed_test.csv")
-
 
     train_environment = SensorEnvironment(
         data_path=train_data,
@@ -67,7 +62,6 @@ def training():
         n_neighbors_min=n_neighbors_min,
         n_neighbors_max=n_neighbors_max,
     )
-
 
     test_environment = SensorEnvironment(
         data_path=test_data,
@@ -87,8 +81,8 @@ def training():
     )
 
     deep_set: SupervisedLearningManager = create_deep_set_learner(
-        train_environment, agent_parameters)
-
+        train_environment, agent_parameters
+    )
 
     # ==================================================================================================
     # LEARNING
@@ -106,7 +100,6 @@ def training():
     validation_environment.close()
     print("Aprendizagem concluída")
 
-
     # ==================================================================================================
     # INFERENCE
     # Teste de inferência após o treinamento com Bootstrap
@@ -117,14 +110,16 @@ def training():
     observation, info = test_environment.reset()
     wins = []
     evaluations = 100
-    
+
     for step in range(evaluations):
 
-        bootstrap_observations, ground_truth = test_environment.get_bootstrap_observations(
-            n_bootstrap
+        bootstrap_observations, ground_truth = (
+            test_environment.get_bootstrap_observations(n_bootstrap)
         )
 
-        baseline_prediction, baseline_std, baseline_ground_truth = test_environment.baseline()
+        baseline_prediction, baseline_std, baseline_ground_truth = (
+            test_environment.baseline()
+        )
 
         actions, _ = deep_set.predict(bootstrap_observations)
         predictions = actions.squeeze().tolist()
@@ -135,7 +130,7 @@ def training():
         baseline_error = baseline_prediction - ground_truth
 
         wins.append(error < baseline_error)
-        
+
         # Move to the next sensor
         final_prediction = np.array([mean_prediction])
         observation, reward, terminated, truncated, info = test_environment.step(
@@ -144,7 +139,6 @@ def training():
 
         if terminated:
             break
-
 
     test_environment.close()
     return np.mean(wins)

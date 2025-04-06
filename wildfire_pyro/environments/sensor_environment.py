@@ -18,6 +18,7 @@ class SensorEnvironment(BaseEnvironment):
         max_steps: int = 50,
         n_neighbors_min: int = 5,
         n_neighbors_max: int = 10,
+        verbose: bool = False,
     ):
         """
         Inicializa o Fixed Sensor Environment.
@@ -35,9 +36,10 @@ class SensorEnvironment(BaseEnvironment):
         self.n_neighbors_max = n_neighbors_max
         self.current_step = 0
         self.ground_truth = None
+        self.verbose = verbose
 
         # Inicializar SensorManager (já realiza o pré-processamento dos dados)
-        self.sensor_manager: SensorManager = SensorManager(data_path)
+        self.sensor_manager: SensorManager = SensorManager(data_path, verbose=verbose)
 
         # Definir espaços de observação e ação
         self._define_spaces()
@@ -47,12 +49,11 @@ class SensorEnvironment(BaseEnvironment):
     def _define_context_handlers(self):
         self._context_handlers["EvaluationMetrics"] = self.on_evalmetrics
 
-
     def on_evalmetrics(self, context):
         """
         Handler for evaluation metrics context. This method is automatically called
         by the environment's `receive_context()` middleware when the context_type
-        is 'EvaluationMetrics'.
+        is 'EvaluationMetrics', from Bootstrap Evaluation Callback.
 
         You can use this hook to:
         - Log custom metrics
@@ -64,8 +65,9 @@ class SensorEnvironment(BaseEnvironment):
             context (EvaluationMetrics): The evaluation result dataclass.
         """
 
-        print("Environment on_evalmetrics triggered, context:")
-        print(context)
+        if self.verbose:
+            print("Environment on_evalmetrics triggered, context:")
+            print(context)
 
     def _define_spaces(self):
         """
@@ -243,13 +245,15 @@ class SensorEnvironment(BaseEnvironment):
                 - A single float value representing the ground truth of the target sensor.
         """
         # Request bootstrap neighbor deltas and the common ground truth value from the sensor manager
-        bootstrap_deltas, ground_truth = self.sensor_manager.get_bootstrap_neighbors_deltas(
-            n_bootstrap=n_bootstrap,
-            n_neighbors_max=self.n_neighbors_max,
-            n_neighbors_min=self.n_neighbors_min,
-            time_window=-1,          # No time constraint
-            distance_window=-1,      # Distance constraint unused
-            force_recompute=force_recompute
+        bootstrap_deltas, ground_truth = (
+            self.sensor_manager.get_bootstrap_neighbors_deltas(
+                n_bootstrap=n_bootstrap,
+                n_neighbors_max=self.n_neighbors_max,
+                n_neighbors_min=self.n_neighbors_min,
+                time_window=-1,  # No time constraint
+                distance_window=-1,  # Distance constraint unused
+                force_recompute=force_recompute,
+            )
         )
 
         # Preallocate the full observation tensor with shape (n_bootstrap, n_neighbors_max, 5)
@@ -266,8 +270,7 @@ class SensorEnvironment(BaseEnvironment):
             num_neighbors = len(deltas)
 
             # Create feature matrix (n_neighbors_max, 4) and mask (n_neighbors_max,)
-            observation_matrix = np.zeros(
-                (self.n_neighbors_max, 4), dtype=np.float32)
+            observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
             mask = np.zeros(self.n_neighbors_max, dtype=bool)
 
             if num_neighbors > 0:

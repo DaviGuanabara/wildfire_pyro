@@ -301,7 +301,7 @@ class BootstrapEvaluationCallback(EventCallback):
         best_model_save_path: Optional[str] = None,
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
-        seed: int = 42
+        seed: int = 42,
     ):
         super().__init__(verbose=verbose)
         self.evaluation_environment: BaseEnvironment = evaluation_environment
@@ -323,7 +323,6 @@ class BootstrapEvaluationCallback(EventCallback):
         self.comparison_history: List[int] = []
         self.rolling_window_size = 100
         self.seed = seed
-
 
     def _evaluate_learner(self) -> EvaluationMetrics:
         """Evaluates the learner using the error function."""
@@ -366,7 +365,6 @@ class BootstrapEvaluationCallback(EventCallback):
             model_win_rate_over_baseline=model_win_rate,
         )
 
-
         # STEP to forward environment
         mean_model_predictions = np.mean(model_predictions, axis=0)
         self.evaluation_environment.step(mean_model_predictions)
@@ -380,12 +378,11 @@ class BootstrapEvaluationCallback(EventCallback):
         )
 
         # shape: (n_bootstrap, n_neighbors, input_dim + 1)
-        #batch_obs = np.stack(bootstrap_observations)
+        # batch_obs = np.stack(bootstrap_observations)
         actions, _ = self.learner.predict(bootstrap_observations)
-        
+
         # if output_dim = 1, remove extra dimensions
         predictions = actions.squeeze().tolist()
-
 
         mean_action = np.mean(actions)
         std_action = np.std(actions)
@@ -425,7 +422,7 @@ class BootstrapEvaluationCallback(EventCallback):
             return True
 
         results: EvaluationMetrics = self._evaluate_learner()
-        
+
         self.evaluation_environment.receive_context(asdict(results))
 
         self._store_numpy_logs(results)
@@ -480,6 +477,9 @@ class BootstrapEvaluationCallback(EventCallback):
 
         self.learner.logger.record("eval/batch_error", results.model_error)
         self.learner.logger.record("eval/std_error", results.model_std)
+        self.learner.logger.record(
+            "eval/win_rate_over_baseline", results.model_win_rate_over_baseline
+        )
         self.learner.logger.record("time/total_timesteps", self.num_timesteps)
         self.learner.logger.dump(self.num_timesteps)
 

@@ -14,7 +14,7 @@ class SensorManager:
     LONGITUDE_TAG = "lon"
     SENSOR_ID_TAG = "sensor_id"
 
-    def __init__(self, data_path):
+    def __init__(self, data_path, verbose: bool = False):
         """
         Initialize the SensorManager with the dataset.
 
@@ -27,6 +27,7 @@ class SensorManager:
         self.data["sensor_id"] = self.data.groupby(["lat", "lon"]).ngroup()
         self.sensors = self.data["sensor_id"].unique()
 
+        self.verbose = verbose
         self.reset()
 
     def reset(self, seed: int = None):
@@ -231,18 +232,20 @@ class SensorManager:
         }
 
         # Filter candidate rows for the selected sensors
-        selected_rows = candidates[candidates[self.SENSOR_ID_TAG].isin(selected_sensors)]
+        selected_rows = candidates[
+            candidates[self.SENSOR_ID_TAG].isin(selected_sensors)
+        ]
 
         # Sample one row per sensor using its assigned seed
         sampled_neighbors = (
-            selected_rows
-            .groupby(self.SENSOR_ID_TAG, group_keys=False)
-            .apply(lambda group: group.sample(n=1, random_state=sampling_seeds[group.name]))
+            selected_rows.groupby(self.SENSOR_ID_TAG, group_keys=False)
+            .apply(
+                lambda group: group.sample(n=1, random_state=sampling_seeds[group.name])
+            )
             .reset_index(drop=True)
         )
 
         return sampled_neighbors
-
 
     def ensure_minimum_neighbors(
         self, n_neighbors_max, n_neighbors_min, time_window, distance_window
@@ -282,9 +285,11 @@ class SensorManager:
 
             # Add sensor to the "no neighbors" list and log the update
             self.sensors_without_neighbors.add(current_sensor_id)
-            logger.info(
-                f"Sensors without enough neighbors: {sorted(self.sensors_without_neighbors)}"
-            )
+
+            if self.verbose:
+                logger.info(
+                    f"Sensors without enough neighbors: {sorted(self.sensors_without_neighbors)}"
+                )
 
             self.step()  # Move to the next sensor
 
@@ -352,7 +357,7 @@ class SensorManager:
         if self.state_tracker["current_sensor"] is None:
             raise ValueError("No sensor selected. Call `step()` first.")
 
-        # A latitude e longitude são constantes para o sensor atual
+        # lat and lon are constant
         lat = self.cache["data_from_current_sensor"][self.LATITUDE_TAG].iloc[0]
         lon = self.cache["data_from_current_sensor"][self.LONGITUDE_TAG].iloc[0]
         return lat, lon
@@ -367,7 +372,7 @@ class SensorManager:
         if self.state_tracker["current_sensor"] is None:
             raise ValueError("Nenhum sensor selecionado. Chame `step()` primeiro.")
 
-        # Obtendo o valor do tempo com base no índice de tempo atual
+        # Obtain the value of the time based on the index of current time
         current_time = self.cache["data_from_current_sensor"][self.TIME_TAG].iloc[
             self.state_tracker["current_time_index"]
         ]
@@ -401,7 +406,6 @@ class SensorManager:
         )
         return sensors_in_region
 
-    # UPDATE ─────────────────────────────────────────────────────
     def get_bootstrap_neighbors(
         self,
         n_bootstrap: int = 20,
@@ -501,5 +505,3 @@ class SensorManager:
             bootstrap_deltas.append(deltas)
 
         return bootstrap_deltas, ground_truth
-
-    # ────────────────────────────────────────────────────────────────────────
