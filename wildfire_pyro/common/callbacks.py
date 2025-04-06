@@ -379,10 +379,13 @@ class BootstrapEvaluationCallback(EventCallback):
             self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
         )
 
-        actions = []
-        for obs in bootstrap_observations:
-            action, _ = self.learner.predict(obs)
-            actions.append(action.item())
+        # shape: (n_bootstrap, n_neighbors, input_dim + 1)
+        #batch_obs = np.stack(bootstrap_observations)
+        actions, _ = self.learner.predict(bootstrap_observations)
+        
+        # if output_dim = 1, remove extra dimensions
+        predictions = actions.squeeze().tolist()
+
 
         mean_action = np.mean(actions)
         std_action = np.std(actions)

@@ -216,66 +216,71 @@ class SensorEnvironment(BaseEnvironment):
 
     def get_bootstrap_observations(
         self, n_bootstrap: int, force_recompute: bool = True
-    ) -> Tuple[list, float]:
+    ) -> Tuple[np.ndarray, float]:
         """
-        Generates a list of observations using bootstrap neighbor deltas and returns a single ground truth value.
+        Generates a batch of observations using bootstrap neighbor deltas and returns the corresponding ground truth.
 
-        For each bootstrap sample, the SensorManager's get_bootstrap_neighbors_deltas method is used to
-        obtain a delta DataFrame. An observation matrix is built from each delta DataFrame by:
+        For each bootstrap sample, the SensorManager's `get_bootstrap_neighbors_deltas` method provides
+        a delta DataFrame. Each DataFrame is converted into an observation matrix by:
         - Creating a feature matrix of shape (n_neighbors_max, 4), where available delta values are placed
-            in the upper rows.
-        - Creating a boolean mask of length n_neighbors_max (True for rows with data, False for padded rows).
-        - Horizontally stacking the feature matrix and the mask (converted to float) to produce an observation
-            of shape (n_neighbors_max, 5).
+        in the upper rows and missing rows are zero-padded.
+        - Creating a binary mask (length n_neighbors_max) indicating which rows contain real neighbors.
+        - Horizontally stacking the feature matrix and the mask to produce an observation
+        of shape (n_neighbors_max, 5).
 
-        Since the target sensor is locked, the ground truth is computed once and is identical for all samples.
+        All observations are stacked into a NumPy array of shape (n_bootstrap, n_neighbors_max, 5),
+        ready for batch inference by the model.
+
+        Since the target sensor remains fixed, the same ground truth value is used for all samples.
 
         Args:
             n_bootstrap (int): Number of bootstrap samples to generate.
+            force_recompute (bool): If True, forces regeneration of bootstrap neighbors even if cached.
 
         Returns:
-            Tuple[list, float]:
-                - A list of observation matrices (each with shape (n_neighbors_max, 5)).
-                - A single ground truth value from the target sensor.
+            Tuple[np.ndarray, float]:
+                - A NumPy array of shape (n_bootstrap, n_neighbors_max, 5) containing all bootstrap observations.
+                - A single float value representing the ground truth of the target sensor.
         """
-        # Obtain the bootstrap neighbor deltas and the ground truth from the sensor manager.
-        bootstrap_deltas, ground_truth = (
-            self.sensor_manager.get_bootstrap_neighbors_deltas(
-                n_bootstrap=n_bootstrap,
-                n_neighbors_max=self.n_neighbors_max,
-                n_neighbors_min=self.n_neighbors_min,
-                time_window=-1,  # Adjust if needed.
-                distance_window=-1,  # Currently unused.
-                force_recompute=force_recompute,
-            )
+        # Request bootstrap neighbor deltas and the common ground truth value from the sensor manager
+        bootstrap_deltas, ground_truth = self.sensor_manager.get_bootstrap_neighbors_deltas(
+            n_bootstrap=n_bootstrap,
+            n_neighbors_max=self.n_neighbors_max,
+            n_neighbors_min=self.n_neighbors_min,
+            time_window=-1,          # No time constraint
+            distance_window=-1,      # Distance constraint unused
+            force_recompute=force_recompute
         )
 
-        observations = []
+        # Preallocate the full observation tensor with shape (n_bootstrap, n_neighbors_max, 5)
+        # Each observation has 4 features + 1 mask column
+        observations = np.zeros(
+            (n_bootstrap, self.n_neighbors_max, 5), dtype=np.float32
+        )
 
-        # For each bootstrap sample, build the observation.
-        for deltas in bootstrap_deltas:
-            # Create an empty feature matrix and a mask.
-            observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
-            mask = np.zeros(self.n_neighbors_max, dtype=bool)
-
-            # Get the number of available neighbors in this sample.
+        # Process each bootstrap delta sample
+        # simply fufill the observation matrix with zeros
+        # and the mask with False values
+        # to keep a fix shape for neural network input
+        for i, deltas in enumerate(bootstrap_deltas):
             num_neighbors = len(deltas)
 
-            # Fill in the feature matrix with the available delta values.
+            # Create feature matrix (n_neighbors_max, 4) and mask (n_neighbors_max,)
+            observation_matrix = np.zeros(
+                (self.n_neighbors_max, 4), dtype=np.float32)
+            mask = np.zeros(self.n_neighbors_max, dtype=bool)
+
             if num_neighbors > 0:
+                # Copy actual delta values into the top rows of the observation matrix
                 observation_matrix[:num_neighbors, :] = deltas.values
+                mask[:num_neighbors] = True
 
-            # Mark the positions corresponding to real neighbors.
-            mask[:num_neighbors] = True
-
-            # Stack the feature matrix and mask to form the final observation.
-            # The mask is converted to float (1.0 for True, 0.0 for False).
-            observation = np.hstack(
+            # Concatenate feature matrix and mask to form one observation matrix
+            # Shape: (n_neighbors_max, 5)
+            observations[i] = np.hstack(
                 (observation_matrix, mask.reshape(-1, 1).astype(np.float32))
             )
-            observations.append(observation)
 
-        # TODO: Trocar ground_truth por info, e a adicionar no info o ground_truth e o baseline ?
         return observations, ground_truth
 
     def baseline(self):

@@ -9,7 +9,7 @@ from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager, BaseLearningManager
 
 
-def create_deep_set_learner(env: BaseEnvironment, parameters: Dict[str, Any]) -> BaseLearningManager:
+def create_deep_set_learner(env: BaseEnvironment, parameters: Dict[str, Any]) -> SupervisedLearningManager:
     """
     Factory function to instantiate the DeepSetAttentionNet model and its LearningManager.
 

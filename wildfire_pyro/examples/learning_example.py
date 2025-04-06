@@ -117,10 +117,9 @@ for step in range(2):
 
     baseline_prediction, baseline_std, baseline_ground_truth = test_environment.baseline()
 
-    predictions = []
-    for obs in bootstrap_observations:
-        action, _ = deep_set.predict(obs)
-        predictions.append(action.item())
+    actions, _ = deep_set.predict(bootstrap_observations)
+    predictions = actions.squeeze().tolist()
+
 
     mean_prediction = np.mean(predictions)
     std_prediction = np.std(predictions)
