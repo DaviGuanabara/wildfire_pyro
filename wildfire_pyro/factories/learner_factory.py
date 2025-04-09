@@ -6,14 +6,17 @@ from gymnasium import spaces
 
 from wildfire_pyro.models.deep_set_attention_net import DeepSetAttentionNet
 from wildfire_pyro.environments.base_environment import BaseEnvironment
-from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager, BaseLearningManager
-from wildfire_pyro.common.seed_manager import configure_seed_manager
+from wildfire_pyro.wrappers.supervised_learning_manager import (
+    SupervisedLearningManager,
+    BaseLearningManager,
+)
+
 
 def create_deep_set_learner(
     env: BaseEnvironment,
     model_parameters: Dict[str, Any],
     logging_parameters: Dict[str, Any],
-    runtime_parameters: Dict[str, Any]
+    runtime_parameters: Dict[str, Any],
 ) -> SupervisedLearningManager:
     """
     Factory function to instantiate the DeepSetAttentionNet model and its LearningManager.
@@ -34,7 +37,9 @@ def create_deep_set_learner(
     elif isinstance(env.observation_space, spaces.Discrete):
         input_dim = 1
     else:
-        raise NotImplementedError(f"Unsupported observation space: {type(env.observation_space)}")
+        raise NotImplementedError(
+            f"Unsupported observation space: {type(env.observation_space)}"
+        )
 
     if isinstance(env.action_space, spaces.Box):
         output_dim = env.action_space.shape[-1]
@@ -43,10 +48,6 @@ def create_deep_set_learner(
     else:
         raise NotImplementedError(f"Unsupported action space: {type(env.action_space)}")
 
-
-    # just need to set it once, for reproducibility
-    configure_seed_manager(runtime_parameters.get("seed", 42))
-
     # Cria modelo com base em model_parameters
     neural_network = DeepSetAttentionNet(
         input_dim=input_dim,
@@ -54,7 +55,6 @@ def create_deep_set_learner(
         hidden=model_parameters.get("hidden", 64),
         prob=model_parameters.get("dropout_prob", 0.2),
     ).to(runtime_parameters.get("device", "cpu"))
-
 
     # Instancia o learner
     learner = SupervisedLearningManager(

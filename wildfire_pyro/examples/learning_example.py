@@ -8,6 +8,7 @@ from wildfire_pyro.factories.learner_factory import (
 
 from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
 from datetime import datetime
+from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
 # ==================================================================================================
 # Funções adicionais
@@ -43,17 +44,20 @@ def log_evaluation(metrics, info, step):
 # Configurações do agente DeepSet
 # ==================================================================================================
 
-# Setup environments
-seed = 0
-max_steps = 200000
-n_neighbors_min = 2
-n_neighbors_max = 5
-verbose = False
+
+# just need to set it once, for reproducibility
+global_seed = 42
+configure_seed_manager(global_seed)
 
 train_data = get_path("fixed_train.csv")
 validation_data = get_path("fixed_val.csv")
 test_data = get_path("fixed_test.csv")
 
+# Setup environments
+max_steps = 200000
+n_neighbors_min = 2
+n_neighbors_max = 5
+verbose = False
 
 # Setup Training
 total_training_steps = 20_000
@@ -77,13 +81,13 @@ log_dir = os.path.join("./logs", run_id)
 
 logging_parameters = {
     "log_path": log_dir,
-    "format_strings": ["csv", "tensorboard", "stdout"]
+    "format_strings": ["csv", "tensorboard", "stdout"],
 }
 
 runtime_parameters = {
     "device": "cuda" if torch.cuda.is_available() else "cpu",
-    "seed": 42, #seed global
-    "verbose": 1,
+    "seed": get_seed(f"run_{0}"),
+    "verbose": verbose,
 }
 
 
@@ -119,14 +123,16 @@ test_environment = SensorEnvironment(
 eval_callback = BootstrapEvaluationCallback(
     validation_environment,
     best_model_save_path=logging_parameters.get("log_path"),
-    seed=runtime_parameters.get("seed", 42),
+    seed=get_seed("Bootstrap_Evaluation_Callback"),
     eval_freq=1_000,
     n_eval=n_eval,
     n_bootstrap=n_bootstrap,
 )
 
 
-deep_set_learner = create_deep_set_learner(train_environment, model_parameters, logging_parameters, runtime_parameters)
+deep_set_learner = create_deep_set_learner(
+    train_environment, model_parameters, logging_parameters, runtime_parameters
+)
 
 
 # ==================================================================================================
@@ -151,7 +157,7 @@ print("Aprendizagem concluída")
 # ==================================================================================================
 
 print("\n=== Starting Bootstrap Evaluation ===")
-observation, info = test_environment.reset()
+observation, info = test_environment.reset(seed=get_seed("test"))
 wins = []
 metrics = {}
 metrics["sensor_id"] = info["sensor"]["sensor_id"]
@@ -185,6 +191,7 @@ for step in range(evaluations):
 
     if terminated:
         print("\nThe episode has ended.")
+        observation, info = test_environment.reset(seed=get_seed("test"))
         break
 
 print(f"Final of evaluation. Win Rate: {np.mean(wins)}")

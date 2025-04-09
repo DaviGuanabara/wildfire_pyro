@@ -3,6 +3,7 @@ import torch
 from typing import Optional
 import hashlib
 
+
 class SeedManager:
     def __init__(self, global_seed: int):
         self.global_seed = global_seed
@@ -27,14 +28,24 @@ class SeedManager:
 # ✅ Singleton global
 _seed_manager: Optional[SeedManager] = None
 
+
 def configure_seed_manager(global_seed: int):
     global _seed_manager
     _seed_manager = SeedManager(global_seed)
 
+
 def get_seed_manager() -> SeedManager:
     if _seed_manager is None:
-        raise RuntimeError("SeedManager has not been configured yet. Set global seed first calling configure_seed_manager")
+        raise RuntimeError(
+            "SeedManager has not been configured yet. Set global seed first calling configure_seed_manager"
+        )
     return _seed_manager
+
 
 def get_global_seed() -> int:
     return _seed_manager.global_seed
+
+
+def get_seed(key: str) -> int:
+    seed_manager = get_seed_manager()
+    return seed_manager.get_seed(key)

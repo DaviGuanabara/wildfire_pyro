@@ -17,12 +17,20 @@ from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
 
 if TYPE_CHECKING:
-    from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback, NoneCallback
+    from wildfire_pyro.common.callbacks import (
+        BaseCallback,
+        CallbackList,
+        ConvertCallback,
+        ProgressBarCallback,
+        NoneCallback,
+    )
 
 import pathlib
 import io
 import zipfile
 import pickle
+
+from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
 
 def recursive_getattr(obj, attr, *default):
@@ -55,7 +63,14 @@ def save_to_zip_file(
 
 
 class BaseLearningManager:
-    def __init__(self, environment: BaseEnvironment, neural_network: torch.nn.Module, runtime_parameters: Dict[str, Any], logging_parameters: Dict[str, Any], model_parameters: Dict[str, Any]):
+    def __init__(
+        self,
+        environment: BaseEnvironment,
+        neural_network: torch.nn.Module,
+        runtime_parameters: Dict[str, Any],
+        logging_parameters: Dict[str, Any],
+        model_parameters: Dict[str, Any],
+    ):
         """
         Initializes the learning manager.
 
@@ -66,25 +81,26 @@ class BaseLearningManager:
         """
         self.environment = environment
         self.neural_network = neural_network
-        #self.parameters = parameters
+        # self.parameters = parameters
         self.device = runtime_parameters.get("device", "cpu")
         self.verbose = runtime_parameters.get("verbose", 1)
         self.seed = runtime_parameters.get("seed", 42)
 
-        #self.tensorboard_log = parameters.get("tensorboard_log", None)
-        
+        # self.tensorboard_log = parameters.get("tensorboard_log", None)
+
         self.log_path = logging_parameters.get("log_path")
         self.format_strings = logging_parameters.get("format_strings")
-        #self.tensorboard_log = self.log_path
+        # self.tensorboard_log = self.log_path
 
         self.batch_size = model_parameters.get("batch_size", 64)
         self.rollout_size = model_parameters.get("rollout_size", self.batch_size)
         self.lr = model_parameters.get("lr", 1e-3)
 
-
-
         # Initialize the environment state
-        self._last_obs, self._last_info = self.environment.reset(seed=self.seed)
+
+        init_seed = get_seed("BaseLearningManager/init")
+        self._last_obs, self._last_info = self.environment.reset(seed=init_seed)
+
         self.num_timesteps = 0
         self._total_timesteps = 0
 
@@ -93,8 +109,9 @@ class BaseLearningManager:
             max_size=self.batch_size,
             observation_shape=environment.observation_space.shape,
             action_shape=(
-                environment.action_space.shape if isinstance(
-                    environment.action_space, spaces.Box) else (1,)
+                environment.action_space.shape
+                if isinstance(environment.action_space, spaces.Box)
+                else (1,)
             ),
             device=self.device,
         )
@@ -114,7 +131,13 @@ class BaseLearningManager:
         :return: A combined callback.
         """
         # Delayed import to avoid circular import
-        from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback, NoneCallback
+        from wildfire_pyro.common.callbacks import (
+            BaseCallback,
+            CallbackList,
+            ConvertCallback,
+            ProgressBarCallback,
+            NoneCallback,
+        )
 
         if callback is None:
             callback = NoneCallback()  # Default empty callback
@@ -134,7 +157,12 @@ class BaseLearningManager:
         callback.init_callback(self)
         return callback
 
-    def collect_rollouts(self, neural_network: torch.nn.Module, n_rollout_steps: int, callback: "BaseCallback") -> bool:
+    def collect_rollouts(
+        self,
+        neural_network: torch.nn.Module,
+        n_rollout_steps: int,
+        callback: "BaseCallback",
+    ) -> bool:
         """
         Collects rollouts from the environment and stores them in the buffer.
 
@@ -144,12 +172,14 @@ class BaseLearningManager:
         """
         callback.on_rollout_start()
 
-        obs, info = self.environment.reset()  # Ensure we start with a valid observation
+        # Ensure we start with a valid observation
+        obs, info = self.environment.reset(seed=self._generate_rollout_seed())
 
         for step in range(n_rollout_steps):
             with torch.no_grad():
                 obs_tensor = torch.tensor(
-                    obs, device=self.device, dtype=torch.float32).unsqueeze(0)
+                    obs, device=self.device, dtype=torch.float32
+                ).unsqueeze(0)
                 y_pred: torch.Tensor = neural_network(obs_tensor)
                 action: np.ndarray = y_pred.cpu().numpy().squeeze(0)
 
@@ -161,8 +191,7 @@ class BaseLearningManager:
 
             self.buffer.add(obs, action, ground_truth)
 
-            obs, reward, terminated, truncated, info = self.environment.step(
-                action)
+            obs, reward, terminated, truncated, info = self.environment.step(action)
             self.num_timesteps += 1
 
             callback.update_locals(locals())
@@ -171,13 +200,22 @@ class BaseLearningManager:
                 return False
 
             if terminated or truncated:
-                obs, info = self.environment.reset()
+                obs, info = self.environment.reset(seed=self._generate_rollout_seed())
 
         callback.on_rollout_end()
         return True
 
-    def _setup_learn(self, total_timesteps: int, reset_num_timesteps: bool = True, callback=None, tb_log_name="run",
-                     progress_bar: bool = False):
+    def _generate_rollout_seed(self) -> int:
+        return get_seed(f"rollout_t{self.num_timesteps}")
+
+    def _setup_learn(
+        self,
+        total_timesteps: int,
+        reset_num_timesteps: bool = True,
+        callback=None,
+        tb_log_name="run",
+        progress_bar: bool = False,
+    ):
         """
         Sets up the learning process before starting the training loop.
 
@@ -190,7 +228,9 @@ class BaseLearningManager:
         if reset_num_timesteps:
             self.num_timesteps = 0
             self._episode_num = 0
-            self._last_obs, self._last_info = self.environment.reset()
+            self._last_obs, self._last_info = self.environment.reset(
+                seed=self._generate_rollout_seed()
+            )
         else:
             total_timesteps += self.num_timesteps
 
@@ -200,8 +240,6 @@ class BaseLearningManager:
         # Configure logger
         if not self._custom_logger:
             self.logger = configure(self.log_path, self.format_strings)
-
-
 
         # Initialize callback
         callback = self._init_callback(callback, progress_bar)
@@ -213,7 +251,8 @@ class BaseLearningManager:
         Alternates between collecting rollouts and training the neural network.
         """
         total_timesteps, callback = self._setup_learn(
-            total_timesteps, callback=callback, progress_bar=progress_bar)
+            total_timesteps, callback=callback, progress_bar=progress_bar
+        )
 
         callback.on_training_start(locals(), globals())
 
@@ -248,21 +287,21 @@ class BaseLearningManager:
         :param iteration: Current logging iteration.
         """
         time_elapsed = max(
-            (time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
-        fps = int(
-            (self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
+            (time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon
+        )
+        fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
 
         if iteration > 0:
-            self.logger.record("time/iterations", iteration,
-                               exclude="tensorboard")
+            self.logger.record("time/iterations", iteration, exclude="tensorboard")
 
         self.logger.record("time/fps", fps)
-        self.logger.record("time/time_elapsed",
-                           int(time_elapsed), exclude="tensorboard")
-        self.logger.record("time/total_timesteps",
-                           self.num_timesteps, exclude="tensorboard")
+        self.logger.record(
+            "time/time_elapsed", int(time_elapsed), exclude="tensorboard"
+        )
+        self.logger.record(
+            "time/total_timesteps", self.num_timesteps, exclude="tensorboard"
+        )
         self.logger.dump(step=self.num_timesteps)
-
 
     def save(
         self,
@@ -296,7 +335,9 @@ class BaseLearningManager:
 
         # Handle PyTorch parameters
         state_dicts_names, torch_variable_names = self._get_torch_save_params()
-        pytorch_variables = {name: recursive_getattr(self, name) for name in torch_variable_names}
+        pytorch_variables = {
+            name: recursive_getattr(self, name) for name in torch_variable_names
+        }
 
         # Remove excluded attributes
         for param_name in exclude:
@@ -306,7 +347,9 @@ class BaseLearningManager:
         params_to_save = self.get_parameters()
 
         # Save everything to a zip file
-        save_to_zip_file(path, data=data, params=params_to_save, pytorch_variables=pytorch_variables)
+        save_to_zip_file(
+            path, data=data, params=params_to_save, pytorch_variables=pytorch_variables
+        )
 
     def _excluded_save_params(self) -> set:
         """
@@ -321,13 +364,13 @@ class BaseLearningManager:
         - List of names of PyTorch tensors/variables to save.
         """
         return ["neural_network.state_dict"], ["neural_network"]
-    
+
     def get_parameters(self) -> Dict[str, Any]:
         """
         Retrieve model parameters.
         """
         return {"neural_network": self.neural_network.state_dict()}
-    
+
     def set_logger(self, logger: Logger) -> None:
         """
         Setter for for logger object.
@@ -342,6 +385,8 @@ class BaseLearningManager:
         # User defined logger
         self._custom_logger = True
 
-    def update_logger(self, folder: Optional[str] = None, format_strings: Optional[list[str]] = None):
+    def update_logger(
+        self, folder: Optional[str] = None, format_strings: Optional[list[str]] = None
+    ):
         self._logger = configure(folder=folder, format_strings=format_strings)
         self._custom_logger = True

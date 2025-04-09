@@ -66,6 +66,7 @@ class SensorEnvironment(BaseEnvironment):
         """
 
         if self.verbose:
+            print(f"[Eval] Seed: {getattr(self, 'seed', None)}")
             print("Environment on_evalmetrics triggered, context:")
             print(context)
 
