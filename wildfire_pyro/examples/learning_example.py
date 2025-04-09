@@ -80,11 +80,9 @@ logging_parameters = {
     "format_strings": ["csv", "tensorboard", "stdout"]
 }
 
-#TODO: Factory de aleatoriedade
-# com cada gerador de aleatoriedade sendo derivado de uma seed global
 runtime_parameters = {
     "device": "cuda" if torch.cuda.is_available() else "cpu",
-    "seed": 42,
+    "seed": 42, #seed global
     "verbose": 1,
 }
 

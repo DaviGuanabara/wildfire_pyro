@@ -332,10 +332,6 @@ class BootstrapEvaluationCallback(EventCallback):
     def _evaluate_learner(self) -> EvaluationMetrics:
         """Evaluates the learner using the error function."""
 
-        # TODO: Como a seed é fixa, ele tá retornando o mesmo estado inicial
-        # portanto, os mesmos valores de bootstrap, o mesmo baseline error...
-        # Assim, é melhor eu gerar a fábrica de geradores de aleatoriedade como mencionado antes.
-
         seed_key = f"bootstrap_eval_t{self.num_timesteps}"
         self.seed = get_seed_manager().get_seed(seed_key)
 
