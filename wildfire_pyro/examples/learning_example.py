@@ -7,7 +7,7 @@ from wildfire_pyro.factories.learner_factory import (
 )
 
 from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
-
+from datetime import datetime
 
 # ==================================================================================================
 # Funções adicionais
@@ -63,14 +63,31 @@ n_eval = 5
 # Setup Evaluation
 evaluations = 100
 
-# Setup Agent Parameters
-agent_parameters = {
-    "lr": 0.1,
-    "device": "cuda" if torch.cuda.is_available() else "cpu",
+
+model_parameters = {
+    "lr": 0.001,
     "dropout_prob": 0.2,
     "hidden": 64,
     "batch_size": 128,
 }
+
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+run_id = f"run_{timestamp}"
+log_dir = os.path.join("./logs", run_id)
+
+logging_parameters = {
+    "log_path": log_dir,
+    "format_strings": ["csv", "tensorboard", "stdout"]
+}
+
+#TODO: Factory de aleatoriedade
+# com cada gerador de aleatoriedade sendo derivado de uma seed global
+runtime_parameters = {
+    "device": "cuda" if torch.cuda.is_available() else "cpu",
+    "seed": 42,
+    "verbose": 1,
+}
+
 
 # ==================================================================================================
 # Instantiation
@@ -103,16 +120,15 @@ test_environment = SensorEnvironment(
 
 eval_callback = BootstrapEvaluationCallback(
     validation_environment,
-    best_model_save_path="./learning_example/logs/",
-    log_path="./learning_example/logs/",
-    tensorboard_log="./learning_example/logs/tensorboard",
+    best_model_save_path=logging_parameters.get("log_path"),
+    seed=runtime_parameters.get("seed", 42),
     eval_freq=1_000,
     n_eval=n_eval,
     n_bootstrap=n_bootstrap,
 )
 
 
-deep_set_learner = create_deep_set_learner(train_environment, agent_parameters)
+deep_set_learner = create_deep_set_learner(train_environment, model_parameters, logging_parameters, runtime_parameters)
 
 
 # ==================================================================================================
@@ -122,7 +138,7 @@ deep_set_learner = create_deep_set_learner(train_environment, agent_parameters)
 # each environment in its own thread
 # ==================================================================================================
 
-train_environment.reset(seed)
+train_environment.reset(runtime_parameters.get("seed", 42))
 deep_set_learner.learn(
     total_timesteps=total_training_steps, callback=eval_callback, progress_bar=True
 )

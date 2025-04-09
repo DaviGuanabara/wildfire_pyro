@@ -14,6 +14,7 @@ from wildfire_pyro.common import utils
 
 
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
+from wildfire_pyro.common.logger import Logger, configure
 
 if TYPE_CHECKING:
     from wildfire_pyro.common.callbacks import BaseCallback, CallbackList, ConvertCallback, ProgressBarCallback, NoneCallback
@@ -54,7 +55,7 @@ def save_to_zip_file(
 
 
 class BaseLearningManager:
-    def __init__(self, environment: BaseEnvironment, neural_network: torch.nn.Module, parameters: Dict[str, Any]):
+    def __init__(self, environment: BaseEnvironment, neural_network: torch.nn.Module, runtime_parameters: Dict[str, Any], logging_parameters: Dict[str, Any], model_parameters: Dict[str, Any]):
         """
         Initializes the learning manager.
 
@@ -65,23 +66,31 @@ class BaseLearningManager:
         """
         self.environment = environment
         self.neural_network = neural_network
-        self.parameters = parameters
-        self.device = parameters.get("device", "cpu")
-        self.verbose = parameters.get("verbose", 1)
-        self.tensorboard_log = parameters.get("tensorboard_log", None)
+        #self.parameters = parameters
+        self.device = runtime_parameters.get("device", "cpu")
+        self.verbose = runtime_parameters.get("verbose", 1)
+        self.seed = runtime_parameters.get("seed", 42)
 
-        # Initialize logging
-        log_dir = parameters.get("log_dir", None)
-        self.logger = logger.configure(log_dir)
+        #self.tensorboard_log = parameters.get("tensorboard_log", None)
+        
+        self.log_path = logging_parameters.get("log_path")
+        self.format_strings = logging_parameters.get("format_strings")
+        #self.tensorboard_log = self.log_path
+
+        self.batch_size = model_parameters.get("batch_size", 64)
+        self.rollout_size = model_parameters.get("rollout_size", self.batch_size)
+        self.lr = model_parameters.get("lr", 1e-3)
+
+
 
         # Initialize the environment state
-        self._last_obs, self._last_info = self.environment.reset()
+        self._last_obs, self._last_info = self.environment.reset(seed=self.seed)
         self.num_timesteps = 0
         self._total_timesteps = 0
 
         # Experience replay buffer
         self.buffer = ReplayBuffer(
-            max_size=parameters.get("batch_size", 64),
+            max_size=self.batch_size,
             observation_shape=environment.observation_space.shape,
             action_shape=(
                 environment.action_space.shape if isinstance(
@@ -190,9 +199,9 @@ class BaseLearningManager:
 
         # Configure logger
         if not self._custom_logger:
-            self.logger = utils.configure_logger(
-                self.verbose, self.tensorboard_log, tb_log_name, reset_num_timesteps
-            )
+            self.logger = configure(self.log_path, self.format_strings)
+
+
 
         # Initialize callback
         callback = self._init_callback(callback, progress_bar)
@@ -210,8 +219,7 @@ class BaseLearningManager:
 
         steps_completed = 0
         while steps_completed < total_timesteps:
-            rollout_steps = min(self.parameters.get(
-                "batch_size", 64), total_timesteps - steps_completed)
+            rollout_steps = min(self.batch_size, total_timesteps - steps_completed)
 
             continue_training = self.collect_rollouts(
                 self.neural_network, n_rollout_steps=rollout_steps, callback=callback
@@ -319,3 +327,21 @@ class BaseLearningManager:
         Retrieve model parameters.
         """
         return {"neural_network": self.neural_network.state_dict()}
+    
+    def set_logger(self, logger: Logger) -> None:
+        """
+        Setter for for logger object.
+
+        .. warning::
+
+          When passing a custom logger object,
+          this will overwrite ``tensorboard_log`` and ``verbose`` settings
+          passed to the constructor.
+        """
+        self._logger = logger
+        # User defined logger
+        self._custom_logger = True
+
+    def update_logger(self, folder: Optional[str] = None, format_strings: Optional[list[str]] = None):
+        self._logger = configure(folder=folder, format_strings=format_strings)
+        self._custom_logger = True

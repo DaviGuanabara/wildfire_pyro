@@ -30,7 +30,9 @@ from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
 import torch
 
 from wildfire_pyro.common.messages import EvaluationMetrics
-from wildfire_pyro.common.tensorboard import TensorBoardLogger
+from wildfire_pyro.common.seed_manager import get_seed_manager, get_global_seed
+
+import csv
 
 try:
     from tqdm import TqdmExperimentalWarning
@@ -297,9 +299,7 @@ class BootstrapEvaluationCallback(EventCallback):
         n_eval: int = 5,
         n_bootstrap: int = 4,
         eval_freq: int = 1000,
-        log_path: Optional[str] = None,
         best_model_save_path: Optional[str] = None,
-        tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         seed: int = 42,
     ):
@@ -311,21 +311,34 @@ class BootstrapEvaluationCallback(EventCallback):
         self.best_batch_error = np.inf  # Minimize error (not "loss")
         self.n_bootstrap = n_bootstrap
 
-        self.log_path = os.path.join(log_path, "evaluations") if log_path else None
-        self.evaluations_results = []
-        self.evaluations_timesteps = []
-        self.all_errors: List[float] = []
-
-        self.tb_logger = TensorBoardLogger(log_dir=tensorboard_log)
-
         self.best_model_save_path = best_model_save_path
 
         self.comparison_history: List[int] = []
         self.rolling_window_size = 100
         self.seed = seed
 
+        self._initial_log_done = False
+
+
+    def _init_callback(self) -> None:
+        super()._init_callback()
+
+        if not self._initial_log_done:
+            self.logger.record("run/seed", get_global_seed())
+            self.logger.record("run/n_eval", self.n_eval)
+            self.logger.record("run/n_bootstrap", self.n_bootstrap)
+            self.logger.dump(0)
+
     def _evaluate_learner(self) -> EvaluationMetrics:
         """Evaluates the learner using the error function."""
+
+        # TODO: Como a seed é fixa, ele tá retornando o mesmo estado inicial
+        # portanto, os mesmos valores de bootstrap, o mesmo baseline error...
+        # Assim, é melhor eu gerar a fábrica de geradores de aleatoriedade como mencionado antes.
+
+        seed_key = f"bootstrap_eval_t{self.num_timesteps}"
+        self.seed = get_seed_manager().get_seed(seed_key)
+
         self.evaluation_environment.reset(self.seed)
 
         model_predictions = []
@@ -422,71 +435,36 @@ class BootstrapEvaluationCallback(EventCallback):
             return True
 
         results: EvaluationMetrics = self._evaluate_learner()
-
         self.evaluation_environment.receive_context(asdict(results))
 
-        self._store_numpy_logs(results)
-        self._print_console_logs(results)
-        self._log_to_learner_logger(results)
-        self._log_to_tensorboard(results)
-        self._save_best_model(results.model_error)
+        self._log_to_logger(results)
 
+        self._save_best_model(results.model_error)
         return True
 
-    def _store_numpy_logs(self, results: EvaluationMetrics):
-        if not self.log_path:
-            return
-        self.evaluations_timesteps.append(self.num_timesteps)
-        self.evaluations_results.append(results.model_error)
-        np.savez(
-            self.log_path,
-            timesteps=self.evaluations_timesteps,
-            results=self.evaluations_results,
-        )
+    def _log_to_logger(self, results: EvaluationMetrics):
 
-    def _print_console_logs(self, results: EvaluationMetrics):
-        if self.verbose > 0:
-            print(
-                f"[Evaluation] Timesteps: {self.num_timesteps} | "
-                f"Model Error: {results.model_error:.4f} ± {results.model_std:.4f}"
-            )
-            if results.has_baseline():
-                print(
-                    f"Baseline Error: {results.baseline_error:.4f} ± {results.baseline_std:.4f}"
-                )
+        self.logger.record("eval/seed", self.seed)
 
-    def _log_to_tensorboard(self, results: EvaluationMetrics):
-        self.tb_logger.log_scalar(
-            "eval/model/batch_error", results.model_error, self.num_timesteps
-        ).log_scalar("eval/model/std_error", results.model_std, self.num_timesteps)
+        self.logger.record("eval/model/batch_error", results.model_error)
+        self.logger.record("eval/model/std_error", results.model_std)
 
         if results.has_baseline():
-            self.tb_logger.log_scalar(
-                "eval/model/win_rate_over_baseline",
-                results.model_win_rate_over_baseline,
-                self.num_timesteps,
-            )
+            self.logger.record("eval/model/baseline_error", results.baseline_error)
+            self.logger.record("eval/model/baseline_std", results.baseline_std)
+            self.logger.record("eval/model/win_rate_over_baseline", results.model_win_rate_over_baseline)
 
-        self.tb_logger.flush()
+        self.logger.record("time/total_timesteps", self.num_timesteps)
+        self.logger.dump(self.num_timesteps)
 
-    def _log_to_learner_logger(self, results: EvaluationMetrics):
-        if not hasattr(self.learner, "logger") or not isinstance(
-            self.learner.logger, Logger
-        ):
-            return
-
-        self.learner.logger.record("eval/batch_error", results.model_error)
-        self.learner.logger.record("eval/std_error", results.model_std)
-        self.learner.logger.record(
-            "eval/win_rate_over_baseline", results.model_win_rate_over_baseline
-        )
-        self.learner.logger.record("time/total_timesteps", self.num_timesteps)
-        self.learner.logger.dump(self.num_timesteps)
 
     def _save_best_model(self, model_error: float):
+
         if model_error < self.best_batch_error:
             if self.verbose > 0:
-                print("New best model error achieved!")
+                self.logger.record("info", "New best model error achieved!", exclude=["csv", "tensorboard"])
+
             if self.best_model_save_path:
+                os.makedirs(self.best_model_save_path, exist_ok=True)
                 self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
             self.best_batch_error = model_error

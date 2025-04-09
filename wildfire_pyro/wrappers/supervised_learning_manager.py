@@ -12,17 +12,16 @@ class SupervisedLearningManager(BaseLearningManager):
         self,
         neural_network: Any,
         environment: BaseEnvironment,
-        parameters: Dict[str, Any],
-        batch_size: int = 64,
+        logging_parameters=Dict[str, Any],
+        runtime_parameters=Dict[str, Any],
+        model_parameters=Dict[str, Any],
     ):
-        super().__init__(environment, neural_network, parameters)  # Corrigido
+        super().__init__(environment, neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters, model_parameters=model_parameters)
 
-        self.batch_size = batch_size
-        self.rollout_size = batch_size
 
         # Inicializa otimizador e loss function corretamente
         self.optimizer = torch.optim.Adam(
-            self.neural_network.parameters(), lr=parameters.get("lr", 1e-3)
+            self.neural_network.parameters(), lr=self.lr
         )
         self.loss_func = torch.nn.MSELoss()
         

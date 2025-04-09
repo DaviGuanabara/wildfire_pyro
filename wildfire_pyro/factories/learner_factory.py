@@ -7,56 +7,62 @@ from gymnasium import spaces
 from wildfire_pyro.models.deep_set_attention_net import DeepSetAttentionNet
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager, BaseLearningManager
+from wildfire_pyro.common.seed_manager import configure_seed_manager
 
-
-def create_deep_set_learner(env: BaseEnvironment, parameters: Dict[str, Any]) -> SupervisedLearningManager:
+def create_deep_set_learner(
+    env: BaseEnvironment,
+    model_parameters: Dict[str, Any],
+    logging_parameters: Dict[str, Any],
+    runtime_parameters: Dict[str, Any]
+) -> SupervisedLearningManager:
     """
     Factory function to instantiate the DeepSetAttentionNet model and its LearningManager.
 
     Args:
-        env (Any): Gymnasium environment instance.
-        parameters (Dict[str, Any]): Dictionary containing model and training parameters.
+        env: The environment used for observation and action space definitions.
+        model_parameters: Parameters specific to the neural model (e.g., lr, hidden, dropout).
+        logging_parameters: Logger configuration (e.g., log_path, tensorboard_log).
+        runtime_parameters: Device, seed, verbosity and other runtime controls.
 
     Returns:
-        LearningManager: Configured model manager for training and inference.
+        SupervisedLearningManager instance, fully configured.
     """
-    # Determine input dimensions from the environment's observation space
+
+    # Determine input and output dimensions from environment
     if isinstance(env.observation_space, spaces.Box):
         input_dim = env.observation_space.shape[-1]
     elif isinstance(env.observation_space, spaces.Discrete):
         input_dim = 1
     else:
-        raise NotImplementedError(
-            f"Unsupported observation space: {type(env.observation_space)}"
-        )
+        raise NotImplementedError(f"Unsupported observation space: {type(env.observation_space)}")
 
-    # Determine output dimensions from the environment's action space
     if isinstance(env.action_space, spaces.Box):
         output_dim = env.action_space.shape[-1]
     elif isinstance(env.action_space, spaces.Discrete):
         output_dim = env.action_space.n
     else:
-        raise NotImplementedError(
-            f"Unsupported action space: {type(env.action_space)}")
+        raise NotImplementedError(f"Unsupported action space: {type(env.action_space)}")
 
-    # Configure additional parameters
-    parameters["input_dim"] = input_dim
-    parameters["output_dim"] = output_dim
 
-    # Instantiate the neural network based on environment dimensions
+    # just need to set it once, for reproducibility
+    configure_seed_manager(runtime_parameters.get("seed", 42))
+
+    # Cria modelo com base em model_parameters
     neural_network = DeepSetAttentionNet(
         input_dim=input_dim,
         output_dim=output_dim,
-        hidden=parameters.get("hidden", 32),
-        prob=parameters.get("dropout_prob", 0.5),
-    ).to(parameters.get("device", "cpu"))
+        hidden=model_parameters.get("hidden", 64),
+        prob=model_parameters.get("dropout_prob", 0.2),
+    ).to(runtime_parameters.get("device", "cpu"))
 
-    # Instantiate the LearningManager with buffer size equal to batch_size
-    learning_manager = SupervisedLearningManager(
+
+    # Instancia o learner
+    learner = SupervisedLearningManager(
         neural_network=neural_network,
         environment=env,
-        parameters=parameters,
-        batch_size=parameters.get("batch_size", 64),
+        logging_parameters=logging_parameters,
+        runtime_parameters=runtime_parameters,
+        model_parameters=model_parameters,
     )
 
-    return learning_manager
+    return learner
