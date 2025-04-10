@@ -151,6 +151,7 @@ train_environment.close()
 validation_environment.close()
 print("Aprendizagem concluída")
 
+# TODO: Maybe load the best model generated ?
 
 # ==================================================================================================
 # Evaluation.
