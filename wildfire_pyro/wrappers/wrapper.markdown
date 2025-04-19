@@ -47,3 +47,40 @@ The Supervised Learning Manager handles data through a structured pipeline:
 - ⚙️ **Parameterization**: All components of the learning manager are highly parameterized, allowing extensive customization of the training process through external configurations.
 - 📐 **Extensibility**: Designed with extensibility in mind, enabling developers to add new functionalities, replace existing components, or integrate additional data handling mechanisms without affecting the core functionalities.
 
+Distillation Learning Manager Extension
+
+The DistillationLearningManager is an extension of the SupervisedLearningManager, created specifically to support supervised knowledge distillation. In this context, a simpler Teacher network guides a more complex Student network in an on-the-fly learning pipeline.
+
+Key Enhancements
+
+🧐 Teacher-Guided Supervision: Instead of pulling the target from the environment's info dictionary (as in traditional setups), the DistillationLearningManager computes the target directly using a teacher model.
+
+⚙️ Target Provider Abstraction: Introduces the TargetProvider interface for fetching supervision targets. Two implementations currently exist:
+
+InfoFieldTargetProvider (default behavior for typical supervised learning)
+
+TeacherTargetProvider (uses a frozen teacher model to generate predictions on-the-fly)
+
+Design Decisions
+
+🧹 Modular Target Generation: The target_provider allows easy switching between supervision strategies without altering the training loop.
+
+🧪 Minimal Invasiveness: DistillationLearningManager extends SupervisedLearningManager with only one constructor override, promoting reuse and keeping the architecture clean.
+
+🚫 No Environment Coupling: Teacher logic is kept entirely outside the environment, preserving modularity and reducing unintended side effects.
+
+🧪 Optional RL Fine-Tuning: The system allows future addition of reinforcement learning fine-tuning after the supervised phase — aligning with modern hybrid training pipelines.
+
+Usage
+
+manager = DistillationLearningManager(
+    neural_network=student_model,
+    environment=env,
+    logging_parameters=log_params,
+    runtime_parameters=runtime_params,
+    model_parameters=model_params,
+    teacher=teacher_model
+)
+
+This configuration enables scalable, reusable distillation workflows within the wildfire_pyro framework.
+

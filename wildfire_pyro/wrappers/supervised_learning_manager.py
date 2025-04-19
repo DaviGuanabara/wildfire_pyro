@@ -1,22 +1,26 @@
 import torch
 import numpy as np
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
-
+from wildfire_pyro.wrappers.components.target_provider import TargetProvider
+from .components import predict_model
 
 class SupervisedLearningManager(BaseLearningManager):
     def __init__(
         self,
-        neural_network: Any,
+        neural_network: torch.nn.Module,
         environment: BaseEnvironment,
         logging_parameters=Dict[str, Any],
         runtime_parameters=Dict[str, Any],
         model_parameters=Dict[str, Any],
+        target_info_key: str = "ground_truth",
+        target_provider: Optional[TargetProvider] = None,
     ):
-        super().__init__(environment, neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters, model_parameters=model_parameters)
+        super().__init__(environment, neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters,
+                         model_parameters=model_parameters, target_info_key=target_info_key, target_provider=target_provider)
 
 
         # Inicializa otimizador e loss function corretamente
@@ -39,33 +43,13 @@ class SupervisedLearningManager(BaseLearningManager):
             Tuple[np.ndarray, Any]: Predicted action(s) and additional information (empty dict).
         """
 
-        # Set the network to evaluation mode
-        self.neural_network.eval()
-        with torch.no_grad():
-            # Convert observation to tensor and move to the correct device
+        return predict_model(
+            self.neural_network,
+            obs,
+            self.device,
+            input_shape=self.environment.observation_space.shape,
+        )
 
-            obs_tensor = torch.tensor(obs, dtype=torch.float32, device=self.device)
-            expected_obs_shape = self.environment.observation_space.shape
-            is_batch = len(obs_tensor.shape) == len(expected_obs_shape) + 1
-
-            # Add batch dimension if not in batch format
-            if not is_batch:
-                # (1, num_neighbors, feature_dim)
-                obs_tensor = obs_tensor.unsqueeze(0)
-
-            # (batch_size, output_dim)
-            action_tensor = self.neural_network(obs_tensor)
-            action = action_tensor.cpu().numpy()
-
-            # If input was not in batch, remove the batch dimension from the
-            # output
-            if not is_batch:
-                # (output_dim,)
-                action = action.squeeze(0)
-
-        # Return action(s) and an empty dictionary for additional information
-
-        return action, {}
     
     def _train(self) -> float:
         """

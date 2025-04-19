@@ -8,21 +8,13 @@ import numpy as np
 import torch
 
 
-import wildfire_pyro.common.logger as logger
-from wildfire_pyro.common.utils import obs_as_tensor, safe_mean
-from wildfire_pyro.common import utils
-
-
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
+from wildfire_pyro.wrappers.components.target_provider import InfoFieldTargetProvider, TargetProvider
 
 if TYPE_CHECKING:
     from wildfire_pyro.common.callbacks import (
         BaseCallback,
-        CallbackList,
-        ConvertCallback,
-        ProgressBarCallback,
-        NoneCallback,
     )
 
 import pathlib
@@ -30,7 +22,7 @@ import io
 import zipfile
 import pickle
 
-from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
+from wildfire_pyro.common.seed_manager import get_seed
 
 
 def recursive_getattr(obj, attr, *default):
@@ -61,7 +53,10 @@ def save_to_zip_file(
             with archive.open("pytorch_variables.pth", "w") as f:
                 torch.save(pytorch_variables, f)
 
-
+#TODO:
+# target_extractor=lambda info: info["teacher_output"]["velocity"]
+# Is it interesting to have a target extractor?
+# It is a function that takes the info dictionary and returns the target value.
 class BaseLearningManager:
     def __init__(
         self,
@@ -70,6 +65,8 @@ class BaseLearningManager:
         runtime_parameters: Dict[str, Any],
         logging_parameters: Dict[str, Any],
         model_parameters: Dict[str, Any],
+        target_info_key: str = "ground_truth",
+        target_provider: Optional[TargetProvider] = None,
     ):
         """
         Initializes the learning manager.
@@ -79,6 +76,11 @@ class BaseLearningManager:
             neural_network (torch.nn.Module): Neural network to be trained.
             parameters (Dict[str, Any]): Dictionary with training parameters.
         """
+        
+        # Target provider: default to InfoField
+        self.target_provider: TargetProvider = target_provider or InfoFieldTargetProvider(
+            target_info_key)
+        
         self.environment = environment
         self.neural_network = neural_network
         # self.parameters = parameters
@@ -96,6 +98,7 @@ class BaseLearningManager:
         self.rollout_size = model_parameters.get("rollout_size", self.batch_size)
         self.lr = model_parameters.get("lr", 1e-3)
 
+        self.target_info_key = target_info_key
         # Initialize the environment state
 
         init_seed = get_seed("BaseLearningManager/init")
@@ -183,13 +186,16 @@ class BaseLearningManager:
                 y_pred: torch.Tensor = neural_network(obs_tensor)
                 action: np.ndarray = y_pred.cpu().numpy().squeeze(0)
 
-            ground_truth: Optional[float] = info.get("ground_truth", None)
+            #ground_truth: Optional[float] = info.get(
+            #    self.target_info_key, None)
+            
+            target = self.target_provider.get_target(obs, info)
 
-            if ground_truth is None:
-                print("[Warning] Missing ground_truth. Ending rollout.")
+            if target is None:
+                print(f"[Warning] Missing 'target'. Ending rollout.")
                 break
 
-            self.buffer.add(obs, action, ground_truth)
+            self.buffer.add(obs, action, target)
 
             obs, reward, terminated, truncated, info = self.environment.step(action)
             self.num_timesteps += 1

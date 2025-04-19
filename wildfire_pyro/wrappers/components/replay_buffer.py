@@ -14,7 +14,7 @@ from typing import Tuple, Optional
 
 class ReplayBuffer:
     """
-    Stores transitions (observation, action, ground_truth) for training.
+    Stores transitions (observation, action, target) for training.
     Implements a fixed-size buffer equal to batch_size.
     """
 
@@ -43,19 +43,19 @@ class ReplayBuffer:
         self.observations = torch.zeros(
             (max_size,) + observation_shape, device=device)
         self.actions = torch.zeros((max_size,) + action_shape, device=device)
-        self.ground_truth = torch.zeros((max_size, 1), device=device)
+        self.target = torch.zeros((max_size, 1), device=device)
 
         self.position = 0
         self.full = False
 
-    def add(self, obs: np.ndarray, action: np.ndarray, ground_truth: float):
+    def add(self, obs: np.ndarray, action: np.ndarray, target: float):
         """
         Adds a transition to the buffer, replacing the oldest transition if the buffer is full.
 
         Args:
             obs (np.ndarray): Current observation.
             action (np.ndarray): Action taken.
-            ground_truth (float): Optimal action associated.
+            target (float): Optimal action associated.
         """
         # Use circular buffer logic: Overwrite the oldest data instead of throwing an error
         idx = self.position % self.max_size  # Circular index
@@ -66,8 +66,8 @@ class ReplayBuffer:
         self.actions[idx] = torch.tensor(
             action, device=self.device, dtype=torch.float32
         )
-        self.ground_truth[idx] = torch.tensor(
-            ground_truth, device=self.device, dtype=torch.float32
+        self.target[idx] = torch.tensor(
+            target, device=self.device, dtype=torch.float32
         )
 
         # Update position and tracking
@@ -83,7 +83,7 @@ class ReplayBuffer:
             batch_size (int): Number of samples to return.
 
         Returns:
-            Tuple containing observations, actions, and ground_truth.
+            Tuple containing observations, actions, and target.
         """
         # Ensure there are enough samples to draw a batch
         buffer_size = self.max_size if self.full else self.position
@@ -92,13 +92,13 @@ class ReplayBuffer:
             raise ValueError(
                 f"Not enough samples in buffer. Requested: {batch_size}, Available: {buffer_size}")
 
-        # Select `batch_size` random indices while ensuring alignment between observation, actions, and ground_truth
+        # Select `batch_size` random indices while ensuring alignment between observation, actions, and target
         indices = np.random.choice(buffer_size, batch_size, replace=False)
 
         return (
             self.observations[indices],
             self.actions[indices],
-            self.ground_truth[indices],
+            self.target[indices],
         )
 
     def reset(self):
@@ -109,7 +109,7 @@ class ReplayBuffer:
         self.full = False
         self.observations.zero_()
         self.actions.zero_()
-        self.ground_truth.zero_()
+        self.target.zero_()
 
     def is_full(self) -> bool:
         """
@@ -139,13 +139,13 @@ class ReplayBuffer:
         # Shift all elements to the left
         self.observations[:-1] = self.observations[1:].clone()
         self.actions[:-1] = self.actions[1:].clone()
-        self.ground_truth[:-1] = self.ground_truth[1:].clone()
+        self.target[:-1] = self.target[1:].clone()
 
 
         # Clear the last position
         self.observations[-1].zero_()
         self.actions[-1].zero_()
-        self.ground_truth[-1].zero_()
+        self.target[-1].zero_()
 
         # Adjust position tracking
         if not self.full:
