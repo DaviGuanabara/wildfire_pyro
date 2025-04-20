@@ -5,6 +5,8 @@ import torch
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager
 from .components import TeacherTargetProvider
+from .components import StudentActionProvider, TeacherActionProvider
+
 
 # TODO: Devo alterar mais em baixo a questao de ter
 # muktiplas observacoes. a obs principal vem do retorno do step
@@ -15,21 +17,35 @@ from .components import TeacherTargetProvider
 # do wue p teacher (ou ao menos diferente)
 # assim tem wue tambem lidar com o observation shape do teacher. 
 
-# TODO: Injetar  o action provider no rollout.
+# TODO: Injetar o action provider no rollout.
 
 # TODO: A questão de distribuir corretamente a observação entre o student e o teacher
 class DistillationLearningManager(SupervisedLearningManager):
+    """
+    This manager performs online distillation where a lightweight teacher guides
+    a student network. The student does not act in the environment. Instead,
+    actions and targets come from the teacher.
+
+    To change behavior (e.g., allow student to act), call:
+        self.set_action_provider(StudentActionProvider(student_model, self.device))
+
+    The current architecture supports:
+    - Flexible substitution of action and target generators
+    - Multiple observation shapes (student vs teacher)
+    - Curriculum-style evolution of control over the environment
+    """
+    
     def __init__(
         self,
-        neural_network: torch.nn.Module,
+        student: torch.nn.Module,
         environment: BaseEnvironment,
         logging_parameters: Dict[str, Any],
         runtime_parameters: Dict[str, Any],
         model_parameters: Dict[str, Any],
-        teacher: torch.nn.Module,
+        teacher_nn: torch.nn.Module,
     ):
         super().__init__(
-            neural_network=neural_network,
+            neural_network=student,
             environment=environment,
             logging_parameters=logging_parameters,
             runtime_parameters=runtime_parameters,
@@ -37,8 +53,11 @@ class DistillationLearningManager(SupervisedLearningManager):
         )
 
         self.target_provider = TeacherTargetProvider(
-            teacher=teacher,
+            teacher=teacher_nn,
             # environment.observation_space.shape,
             input_shape=environment.teacher_observation_space.shape,
             device=self.device,
         )
+        
+        self.action_provider = TeacherActionProvider(
+            teacher=teacher_nn, device=self.device)

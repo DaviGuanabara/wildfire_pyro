@@ -6,7 +6,7 @@ import torch
 from .predict_utils import predict_model
 
 
-class TargetProvider(ABC):
+class BaseTargetProvider(ABC):
     def __init__(self, target_info_key: str = "ground_truth", input_shape: Any = None):
         self.target_info_key = target_info_key
         self.input_shape = input_shape
@@ -16,7 +16,7 @@ class TargetProvider(ABC):
         pass
 
 
-class InfoFieldTargetProvider(TargetProvider):
+class InfoFieldTargetProvider(BaseTargetProvider):
     def __init__(self, target_info_key: str = "ground_truth"):
         super().__init__(target_info_key=target_info_key)
 
@@ -27,7 +27,7 @@ class InfoFieldTargetProvider(TargetProvider):
         return info.get(self.target_info_key, None)
 
 
-class TeacherTargetProvider(TargetProvider):
+class TeacherTargetProvider(BaseTargetProvider):
     def __init__(
         self,
         teacher: torch.nn.Module,

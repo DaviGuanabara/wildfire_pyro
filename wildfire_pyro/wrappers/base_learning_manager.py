@@ -1,7 +1,7 @@
 import sys
 import time
 from typing import Any, Dict, Optional
-from wildfire_pyro.wrappers.components.action_source import BaseActionSource
+
 from wildfire_pyro.wrappers.components.replay_buffer import ReplayBuffer
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from gymnasium import spaces
@@ -11,7 +11,8 @@ import torch
 
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
-from wildfire_pyro.wrappers.components.target_provider import InfoFieldTargetProvider, TargetProvider
+from wildfire_pyro.wrappers.components.target_provider import BaseTargetProvider, InfoFieldTargetProvider
+from .components.action_provider import BaseActionProvider
 
 if TYPE_CHECKING:
     from wildfire_pyro.common.callbacks import (
@@ -66,7 +67,6 @@ class BaseLearningManager:
         runtime_parameters: Dict[str, Any],
         logging_parameters: Dict[str, Any],
         model_parameters: Dict[str, Any],
-        target_provider: TargetProvider,
     ):
         """
         Initializes the learning manager.
@@ -78,7 +78,10 @@ class BaseLearningManager:
         """
         
         # Target provider: default to InfoField
-        self.target_provider: TargetProvider = target_provider 
+        self.target_provider: BaseTargetProvider = InfoFieldTargetProvider(
+            "ground_truth")
+        self.action_provider: BaseActionProvider = BaseActionProvider(
+            provider=neural_network, device=runtime_parameters.get("device", "cpu"))
         
         self.environment = environment
         self.neural_network = neural_network
@@ -181,16 +184,8 @@ class BaseLearningManager:
         obs, info = self.environment.reset(seed=self._generate_rollout_seed())
 
         for step in range(n_rollout_steps):
-            with torch.no_grad():
-                obs_tensor = torch.tensor(
-                    obs, device=self.device, dtype=torch.float32
-                ).unsqueeze(0)
-                y_pred: torch.Tensor = neural_network(obs_tensor)
-                action: np.ndarray = y_pred.cpu().numpy().squeeze(0)
-
-            #ground_truth: Optional[float] = info.get(
-            #    self.target_info_key, None)
             
+            action = self.action_provider.get_action(obs)
             target = self.target_provider.get_target(obs, info)
 
             if target is None:
@@ -398,13 +393,3 @@ class BaseLearningManager:
     ):
         self._logger = configure(folder=folder, format_strings=format_strings)
         self._custom_logger = True
-
-    def set_target_provider(self, target_provider: TargetProvider):
-        self.target_provider = target_provider
-
-
-    def set_action_source(self, action_source: BaseActionSource):
-        self.action_source = action_source
-
-    def set_target_info_key(self, target_info_key: str):
-        self.target_info_key = target_info_key

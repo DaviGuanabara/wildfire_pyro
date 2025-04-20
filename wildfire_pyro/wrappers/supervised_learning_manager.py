@@ -16,12 +16,11 @@ class SupervisedLearningManager(BaseLearningManager):
         logging_parameters=Dict[str, Any],
         runtime_parameters=Dict[str, Any],
         model_parameters=Dict[str, Any],
-        target_info_key: str = "ground_truth",
     ):
-        target_provider = InfoFieldTargetProvider(field=target_info_key)
+        
         
         super().__init__(environment, neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters,
-                         model_parameters=model_parameters, target_provider=target_provider)
+                         model_parameters=model_parameters)
 
 
         # Inicializa otimizador e loss function corretamente
