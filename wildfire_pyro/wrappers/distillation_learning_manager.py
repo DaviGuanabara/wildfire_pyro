@@ -14,6 +14,10 @@ from .components import TeacherTargetProvider
 # isso é necessario para o caso do student receber un espaco de observacao maior
 # do wue p teacher (ou ao menos diferente)
 # assim tem wue tambem lidar com o observation shape do teacher. 
+
+# TODO: Injetar  o action provider no rollout.
+
+# TODO: A questão de distribuir corretamente a observação entre o student e o teacher
 class DistillationLearningManager(SupervisedLearningManager):
     def __init__(
         self,
@@ -23,7 +27,6 @@ class DistillationLearningManager(SupervisedLearningManager):
         runtime_parameters: Dict[str, Any],
         model_parameters: Dict[str, Any],
         teacher: torch.nn.Module,
-        target_info_key: str = "ground_truth",
     ):
         super().__init__(
             neural_network=neural_network,
@@ -31,11 +34,11 @@ class DistillationLearningManager(SupervisedLearningManager):
             logging_parameters=logging_parameters,
             runtime_parameters=runtime_parameters,
             model_parameters=model_parameters,
-            target_info_key=target_info_key,
-            target_provider=TeacherTargetProvider(
-                teacher=teacher,
-                target_info_key=target_info_key,
-                input_shape=environment.observation_space.shape,
-                device=runtime_parameters.get("device", "cpu"),
-            ),
+        )
+
+        self.target_provider = TeacherTargetProvider(
+            teacher=teacher,
+            # environment.observation_space.shape,
+            input_shape=environment.teacher_observation_space.shape,
+            device=self.device,
         )

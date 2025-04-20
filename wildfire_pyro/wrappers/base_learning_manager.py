@@ -1,6 +1,7 @@
 import sys
 import time
 from typing import Any, Dict, Optional
+from wildfire_pyro.wrappers.components.action_source import BaseActionSource
 from wildfire_pyro.wrappers.components.replay_buffer import ReplayBuffer
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from gymnasium import spaces
@@ -65,8 +66,7 @@ class BaseLearningManager:
         runtime_parameters: Dict[str, Any],
         logging_parameters: Dict[str, Any],
         model_parameters: Dict[str, Any],
-        target_info_key: str = "ground_truth",
-        target_provider: Optional[TargetProvider] = None,
+        target_provider: TargetProvider,
     ):
         """
         Initializes the learning manager.
@@ -78,8 +78,7 @@ class BaseLearningManager:
         """
         
         # Target provider: default to InfoField
-        self.target_provider: TargetProvider = target_provider or InfoFieldTargetProvider(
-            target_info_key)
+        self.target_provider: TargetProvider = target_provider 
         
         self.environment = environment
         self.neural_network = neural_network
@@ -98,7 +97,6 @@ class BaseLearningManager:
         self.rollout_size = model_parameters.get("rollout_size", self.batch_size)
         self.lr = model_parameters.get("lr", 1e-3)
 
-        self.target_info_key = target_info_key
         # Initialize the environment state
 
         init_seed = get_seed("BaseLearningManager/init")
@@ -160,6 +158,10 @@ class BaseLearningManager:
         callback.init_callback(self)
         return callback
 
+    # TODO: Injetar aqui o action provider
+    # PQ ELE vai dizer quem é o action source
+    # o aluno ou o professor.
+    
     def collect_rollouts(
         self,
         neural_network: torch.nn.Module,
@@ -396,3 +398,13 @@ class BaseLearningManager:
     ):
         self._logger = configure(folder=folder, format_strings=format_strings)
         self._custom_logger = True
+
+    def set_target_provider(self, target_provider: TargetProvider):
+        self.target_provider = target_provider
+
+
+    def set_action_source(self, action_source: BaseActionSource):
+        self.action_source = action_source
+
+    def set_target_info_key(self, target_info_key: str):
+        self.target_info_key = target_info_key

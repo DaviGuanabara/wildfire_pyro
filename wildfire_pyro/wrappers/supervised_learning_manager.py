@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
-from wildfire_pyro.wrappers.components.target_provider import TargetProvider
+from wildfire_pyro.wrappers.components.target_provider import InfoFieldTargetProvider, TargetProvider
 from .components import predict_model
 
 class SupervisedLearningManager(BaseLearningManager):
@@ -17,10 +17,11 @@ class SupervisedLearningManager(BaseLearningManager):
         runtime_parameters=Dict[str, Any],
         model_parameters=Dict[str, Any],
         target_info_key: str = "ground_truth",
-        target_provider: Optional[TargetProvider] = None,
     ):
+        target_provider = InfoFieldTargetProvider(field=target_info_key)
+        
         super().__init__(environment, neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters,
-                         model_parameters=model_parameters, target_info_key=target_info_key, target_provider=target_provider)
+                         model_parameters=model_parameters, target_provider=target_provider)
 
 
         # Inicializa otimizador e loss function corretamente
