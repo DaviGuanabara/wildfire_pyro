@@ -17,9 +17,6 @@ from .components import StudentActionProvider, TeacherActionProvider
 # do wue p teacher (ou ao menos diferente)
 # assim tem wue tambem lidar com o observation shape do teacher. 
 
-# TODO: Injetar o action provider no rollout.
-
-# TODO: A questão de distribuir corretamente a observação entre o student e o teacher
 class DistillationLearningManager(SupervisedLearningManager):
     """
     This manager performs online distillation where a lightweight teacher guides
@@ -51,11 +48,10 @@ class DistillationLearningManager(SupervisedLearningManager):
             runtime_parameters=runtime_parameters,
             model_parameters=model_parameters,
         )
-
+        
         self.target_provider = TeacherTargetProvider(
             teacher=teacher_nn,
-            # environment.observation_space.shape,
-            input_shape=environment.teacher_observation_space.shape,
+            input_shape=environment.teacher_observation_space,
             device=self.device,
         )
         

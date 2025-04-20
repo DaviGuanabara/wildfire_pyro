@@ -167,7 +167,6 @@ class BaseLearningManager:
     
     def collect_rollouts(
         self,
-        neural_network: torch.nn.Module,
         n_rollout_steps: int,
         callback: "BaseCallback",
     ) -> bool:
@@ -185,8 +184,8 @@ class BaseLearningManager:
 
         for step in range(n_rollout_steps):
             
-            action = self.action_provider.get_action(obs)
-            target = self.target_provider.get_target(obs, info)
+            action = self.action_provider.get_action(obs=obs)
+            target = self.target_provider.get_target(info=info)
 
             if target is None:
                 print(f"[Warning] Missing 'target'. Ending rollout.")
@@ -263,9 +262,7 @@ class BaseLearningManager:
         while steps_completed < total_timesteps:
             rollout_steps = min(self.batch_size, total_timesteps - steps_completed)
 
-            continue_training = self.collect_rollouts(
-                self.neural_network, n_rollout_steps=rollout_steps, callback=callback
-            )
+            continue_training = self.collect_rollouts(n_rollout_steps=rollout_steps, callback=callback)
 
             if not continue_training:
                 break
