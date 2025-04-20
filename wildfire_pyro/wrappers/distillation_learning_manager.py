@@ -7,16 +7,6 @@ from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearnin
 from .components import TeacherTargetProvider
 from .components import StudentActionProvider, TeacherActionProvider
 
-
-# TODO: Devo alterar mais em baixo a questao de ter
-# muktiplas observacoes. a obs principal vem do retorno do step
-# e ela refere-se ao student. já a segunda obs, 
-# deve estar dentro do info (wue restorna do step do ambiente) e é direcionado ao teacher
-# algo como info[teacher_observation]. 
-# isso é necessario para o caso do student receber un espaco de observacao maior
-# do wue p teacher (ou ao menos diferente)
-# assim tem wue tambem lidar com o observation shape do teacher. 
-
 class DistillationLearningManager(SupervisedLearningManager):
     """
     This manager performs online distillation where a lightweight teacher guides
