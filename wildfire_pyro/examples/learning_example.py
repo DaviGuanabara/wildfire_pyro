@@ -10,6 +10,57 @@ from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
 from datetime import datetime
 from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
+#TODO AJUSTAR OS HIPERPARAMETROS DEFAULTS:
+#Comentário Leonardo:
+"""
+[19:14, 26/05/2025] Leonardo - Grupo De Estudo Ads Wildfire Ita - Ceds: Nos parâmetros do modelo, da para colocar valores default diferentes para ficar mais forte
+[19:14, 26/05/2025] Leonardo - Grupo De Estudo Ads Wildfire Ita - Ceds: n_neighbors_min = 2
+n_neighbors_max = 5
+
+Nesses parâmetros usei de 5 a 30 nos dados sintéticos
+
+n_bootstrap = 2
+n_eval = 5
+
+Na quantidade de avaliações para predizer cada ponto eu usei 1600 avaliações com vizinhos diferentes
+"""
+
+
+
+def get_default_hyperparameters(mode='debug'):
+    if mode == 'full':
+        return {
+            "n_neighbors_min": 5,
+            "n_neighbors_max": 30,
+            "n_eval": 1600,
+            "n_bootstrap": 20
+        }
+    else:
+        return {
+            "n_neighbors_min": 2,
+            "n_neighbors_max": 5,
+            "n_eval": 5,
+            "n_bootstrap": 2
+        }
+
+
+"""
+[19:15, 26/05/2025] Leonardo - Grupo De Estudo Ads Wildfire Ita - Ceds: O treinamento está bem rápido (oque está ok para testar)
+
+No artigo, para conseguir ficar legal eu treinei por mais tempo, e fui baixando o learning rate conforme a perda parava de melhorar
+[19:16, 26/05/2025] Leonardo - Grupo De Estudo Ads Wildfire Ita - Ceds: Um dos treinamentos (para o dataset do taxi) usei tbm uma learning rate que oscilava (tipo uma serra)
+[19:16, 26/05/2025] Leonardo - Grupo De Estudo Ads Wildfire Ita - Ceds: Não sei como vc pensou nos critérios de parada, mas talvez seja mais interessante usar alguma coisa de early stopping + reduzir learning rate pela metade, ao invés do número de épocas
+
+
+"""
+
+
+
+
+
+
+
+
 # ==================================================================================================
 # Funções adicionais
 # ==================================================================================================

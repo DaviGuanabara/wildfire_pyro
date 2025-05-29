@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
-from wildfire_pyro.wrappers.components.target_provider import InfoFieldTargetProvider, TargetProvider
+from wildfire_pyro.wrappers.components.target_provider import InfoFieldTargetProvider, BaseTargetProvider
 from .components import predict_model
 
 class SupervisedLearningManager(BaseLearningManager):
