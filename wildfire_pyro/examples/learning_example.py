@@ -25,7 +25,10 @@ n_eval = 5
 Na quantidade de avaliações para predizer cada ponto eu usei 1600 avaliações com vizinhos diferentes
 """
 
-
+""""
+REVER O NOME EVAL_FREQ, POIS O NOME NÃO É MUITO BOM, UMA VEZ QUE O CALLBACK É CHAMADO A CADA EVAL_FREQ PASSOS, MAS NÃO É O NÚMERO DE AVALIAÇÕES
+PORTANTO, NÃO É FREQUENCIA, É O NÚMERO DE PASSOS ENTRE AS AVALIAÇÕES.
+"""
 
 def get_default_hyperparameters(mode='debug'):
     if mode == 'full':
