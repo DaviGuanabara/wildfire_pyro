@@ -73,16 +73,19 @@ def training():
     eval_callback = BootstrapEvaluationCallback(
         validation_environment,
         best_model_save_path="./logs/",
-        log_path="./logs/",
-        tensorboard_log="./logs/tensorboard",
         eval_freq=1_000,
         n_eval=n_eval,
         n_bootstrap=n_bootstrap,
     )
 
-    deep_set: SupervisedLearningManager = create_deep_set_learner(
-        train_environment, agent_parameters
+    deep_set = create_deep_set_learner(
+        train_environment,
+        model_parameters=agent_parameters,
+        logging_parameters={"tensorboard_log": "./logs/tensorboard"},
+        runtime_parameters={
+            "device": agent_parameters["device"], "verbose": 1},
     )
+
 
     # ==================================================================================================
     # LEARNING

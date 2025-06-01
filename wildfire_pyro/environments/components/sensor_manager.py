@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Any
 import pandas as pd
 import numpy as np
 import logging
@@ -30,7 +30,7 @@ class SensorManager:
         self.verbose = verbose
         self.reset()
 
-    def reset(self, seed: int = None):
+    def reset(self, seed: int = 0):
         """
         Reset the SensorManager to its initial state.
 
@@ -49,7 +49,7 @@ class SensorManager:
             "bootstrap_neighbors_step": -1,
         }
 
-        self.cache = {
+        self.cache: dict[str, Any] = {
             "neighbors": None,  # Dados calculados dos vizinhos
             "deltas": None,  # Dados calculados dos deltas
             "data_from_current_sensor": None,  # Dados do sensor atual
@@ -71,7 +71,7 @@ class SensorManager:
             len(self.cache["data_from_current_sensor"])
         )
 
-    def _select_random_sensor(self) -> int:
+    def _select_random_sensor(self):
         """
         Selects a random sensor from the dataset.
 
@@ -106,11 +106,14 @@ class SensorManager:
         if self.state_tracker["current_sensor"] is None:
             raise ValueError("No sensor selected. Call `reset()` first.")
 
-        reading = (
-            self.cache["data_from_current_sensor"]
-            .iloc[self.state_tracker["current_time_index"]]
-            .drop("sensor_id")
-        )
+
+        sensor_df = self.cache.get("data_from_current_sensor")
+        if sensor_df is None:
+            raise RuntimeError("Sensor data is not initialized in cache.")
+
+        reading = sensor_df.iloc[self.state_tracker["current_time_index"]].drop(
+            "sensor_id")
+
 
         # Salva a leitura atual e o ground truth no cache
         self.cache["current_reading"] = reading
@@ -224,11 +227,11 @@ class SensorManager:
         )
 
         # Initialize a secondary RNG to assign deterministic seeds for each selected sensor
-        seed_rng = np.random.default_rng(self.rng.integers(1e9))
+        seed_rng = np.random.default_rng(self.rng.integers(int(1e9)))
 
         # Build a mapping from sensor_id to its sampling seed
         sampling_seeds = {
-            sensor_id: seed_rng.integers(1e9) for sensor_id in selected_sensors
+            sensor_id: seed_rng.integers(int(1e9)) for sensor_id in selected_sensors
         }
 
         # Filter candidate rows for the selected sensors
@@ -299,7 +302,7 @@ class SensorManager:
         n_neighbors_min: int = 1,
         time_window=-1,
         distance_window=-1,
-    ):
+    ) -> pd.DataFrame:
         """
         Calculates the deltas between the current sensor and its neighbors.
 

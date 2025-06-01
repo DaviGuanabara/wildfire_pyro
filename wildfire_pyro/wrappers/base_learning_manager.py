@@ -1,6 +1,9 @@
+from abc import abstractmethod
+from typing import Callable, Union, Optional
+import inspect
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from wildfire_pyro.wrappers.components.replay_buffer import ReplayBuffer
 from wildfire_pyro.environments.base_environment import BaseEnvironment
@@ -23,6 +26,9 @@ import pathlib
 import io
 import zipfile
 import pickle
+import inspect
+
+
 
 from wildfire_pyro.common.seed_manager import get_seed
 
@@ -107,11 +113,15 @@ class BaseLearningManager:
 
         self.num_timesteps = 0
         self._total_timesteps = 0
+        self.loss = np.inf
+
+        obs_shape = environment.observation_space.shape
+        assert obs_shape is not None, "observation_shape must not be None"
 
         # Experience replay buffer
         self.buffer = ReplayBuffer(
             max_size=self.batch_size,
-            observation_shape=environment.observation_space.shape,
+            observation_shape=obs_shape,
             action_shape=(
                 environment.action_space.shape
                 if isinstance(environment.action_space, spaces.Box)
@@ -121,6 +131,63 @@ class BaseLearningManager:
         )
 
         self._custom_logger = False
+        self.evaluation_metrics: Optional[Dict[str, Any]] = None
+
+
+        
+        self.lr_fn = LearningRateSchedulerWrapper(
+            model_parameters.get("lr", 1e-3))
+
+        self.optimizer = torch.optim.Adam(
+            self.neural_network.parameters(),
+            lr=self.lr_fn(step=0, total_steps=1, loss=None),
+        )
+
+        self.loss_func = torch.nn.MSELoss()
+
+    def _update_learning_rate(
+        self,
+        **kwargs
+    ) -> float:
+        """
+        Updates the learning rate based on training dynamics.
+
+        Args:
+            current_step: Current training step.
+            total_steps: Total number of steps (for progress computation).
+            loss: Most recent training loss.
+            **kwargs: Additional context (e.g., evaluation_metrics).
+
+        Returns:
+            float: New learning rate.
+        """
+
+        current_step = self.num_timesteps
+        total_steps=self._total_timesteps
+        evaluation_metrics = self.evaluation_metrics or {}
+        loss = self.loss  # Use the most recent loss
+
+
+        new_lr = self.lr_fn(
+            step=current_step,
+            total_steps=total_steps,
+            loss=loss,
+            evaluation_metrics = evaluation_metrics,
+            **kwargs  # pass other contextual signals like evaluation_metrics
+        )
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = new_lr
+
+        if hasattr(self, "logger"):
+            self.logger.record("train/lr", new_lr, exclude="stdout")
+
+        if self.verbose > 0:
+            print(
+                f"[Info] Updated learning rate to {new_lr:.6f} at step {current_step}.")
+
+        return new_lr
+    
 
     def _init_callback(
         self,
@@ -242,6 +309,7 @@ class BaseLearningManager:
         # Configure logger
         if not self._custom_logger:
             self.logger = configure(self.log_path, self.format_strings)
+
 
         # Initialize callback
         callback = self._init_callback(callback, progress_bar)
@@ -390,3 +458,73 @@ class BaseLearningManager:
     ):
         self._logger = configure(folder=folder, format_strings=format_strings)
         self._custom_logger = True
+
+    @abstractmethod
+    def predict(self, obs: np.ndarray, deterministic: bool = True) -> Tuple[np.ndarray, Any]:
+        """
+        Predict actions from observations.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+    
+    def update_eval_metrics(
+        self,
+        evaluation_metrics: Dict[str, Any],
+    ):
+        """
+        Receives evaluation metrics (e.g., from callbacks) to inform learning dynamics,
+        such as adaptive learning rate schedulers.
+        """
+        self.evaluation_metrics = evaluation_metrics
+        
+
+
+class LearningRateSchedulerWrapper:
+    """
+    General-purpose wrapper for learning rate schedules.
+
+    Accepts a float, a callable with any combination of (step, progress_remaining, loss),
+    and handles dispatching based on the declared parameters.
+
+    Example usage:
+        scheduler = LearningRateSchedulerWrapper(
+            lambda step, loss: 0.001 if loss > 0.05 else 0.0005)
+        lr = scheduler(step=100, loss=0.04)
+    """
+
+    def __init__(self, lr: Union[float, Callable]):
+        self.lr = lr
+
+    def __call__(
+        self,
+        step: Optional[int] = None,
+        total_steps: Optional[int] = None,
+        **kwargs: Any,
+    ) -> float:
+        
+        if self.lr is None:
+            raise ValueError(
+                "Learning rate scheduler is None. Check model_parameters['lr']")
+
+        if total_steps is not None and step is not None:
+            progress_remaining = 1.0 - step / max(total_steps, 1)
+        else:
+            progress_remaining = None
+
+        if callable(self.lr):
+            return self._dispatch(
+                self.lr,
+                step=step,
+                progress_remaining=progress_remaining,
+                **kwargs
+            )
+        else:
+            return float(self.lr)
+
+    def _dispatch(self, fn, **context) -> float:
+        sig = inspect.signature(fn)
+        kwargs = {
+            name: value
+            for name, value in context.items()
+            if name in sig.parameters and value is not None
+        }
+        return fn(**kwargs)

@@ -64,7 +64,7 @@ class BaseCallback(ABC):
         self.verbose = verbose
         self.locals: dict[str, Any] = {}
         self.globals: dict[str, Any] = {}
-        self.parent = None  # Optional parent callback
+        self.parent: Optional[BaseCallback] = None  # Optional parent callback
 
     @property
     def logger(self) -> Logger:
@@ -159,7 +159,11 @@ class CallbackList(BaseCallback):
     def _init_callback(self) -> None:
         for callback in self.callbacks:
             callback.init_callback(self.learner)
-            callback.parent = self.parent  # Inherit parent if applicable
+
+            if hasattr(self, "parent") and self.parent is not None:
+                callback.parent = self.parent  # Inherit parent if applicable
+
+            
 
     def _on_training_start(self) -> None:
         for callback in self.callbacks:
@@ -201,7 +205,7 @@ class ConvertCallback(BaseCallback):
         self.callback = callback
 
     def _on_step(self) -> bool:
-        if self.callback is not None:
+        if self.callback is not None and callable(self.callback):
             return self.callback(self.locals, self.globals)
         return True
 
@@ -252,9 +256,12 @@ class ProgressBarCallback(BaseCallback):
             raise ImportError("Install tqdm and rich for progress bars.")
 
     def _on_training_start(self) -> None:
-        self.pbar = tqdm(
-            total=self.locals["total_timesteps"] - self.learner.num_timesteps
-        )
+        if tqdm is None:
+            raise ImportError("Install tqdm and rich for progress bars.")
+        else:
+            self.pbar = tqdm(
+                total=self.locals["total_timesteps"] - self.learner.num_timesteps
+            )
 
     def _on_step(self) -> bool:
         self.pbar.update(1)
@@ -270,7 +277,7 @@ class EventCallback(BaseCallback):
         super(EventCallback, self).__init__(verbose=verbose)
         self.callback = callback
         # Give access to the parent
-        if callback is not None:
+        if self.callback is not None:
             self.callback.parent = self
 
     def init_callback(self, learner) -> None:
@@ -298,11 +305,28 @@ class BootstrapEvaluationCallback(EventCallback):
         error_function: Optional[Callable[[Any, Any], Any]] = None,
         n_eval: int = 5,
         n_bootstrap: int = 4,
-        eval_freq: int = 1000,
+        eval_freq: int = 1000,  # steps per evaluation (SB3-style)
         best_model_save_path: Optional[str] = None,
         verbose: int = 0,
         seed: int = 42,
     ):
+        """
+        Callback to evaluate the learner using bootstrap sampling.
+        :param evaluation_environment: Environment used for evaluation.
+        :param error_function: Function to compute the error between predictions and ground truth.
+        :param n_eval int: Number of evaluation runs.
+        
+            Number of independent bootstrap evaluations per prediction point.
+            Each evaluation samples 'n_bootstrap' neighbors randomly.
+        :param n_bootstrap: Number of bootstrap samples to use for evaluation.
+        :param eval_freq: Frequency of evaluations in training steps.
+        :param best_model_save_path: Path to save the best model based on evaluation error.
+        :param verbose: Verbosity level (0 = no output, 1 = info, 2 = debug).
+        :param seed: Seed for random number generation.
+
+        
+        """
+
         super().__init__(verbose=verbose)
         self.evaluation_environment: BaseEnvironment = evaluation_environment
         self.error_function = error_function if error_function else torch.nn.MSELoss()
@@ -367,11 +391,11 @@ class BootstrapEvaluationCallback(EventCallback):
 
         # Data flow
         results = EvaluationMetrics(
-            model_error=mean_model_error,
-            model_std=std_model_error,
-            baseline_error=mean_baseline_error,
-            baseline_std=std_baseline_error,
-            model_win_rate_over_baseline=model_win_rate,
+            model_error=float(mean_model_error),
+            model_std=float(std_model_error),
+            baseline_error=float(mean_baseline_error),
+            baseline_std=float(std_baseline_error),
+                               model_win_rate_over_baseline=float(model_win_rate),
         )
 
         # STEP to forward environment
@@ -393,8 +417,8 @@ class BootstrapEvaluationCallback(EventCallback):
         # if output_dim = 1, remove extra dimensions
         predictions = actions.squeeze().tolist()
 
-        mean_action = np.mean(actions)
-        std_action = np.std(actions)
+        mean_action = float(np.mean(actions))
+        std_action = float(np.std(actions))
 
         error = self._compute_errors(mean_action, ground_truth)
 
@@ -431,7 +455,13 @@ class BootstrapEvaluationCallback(EventCallback):
             return True
 
         results: EvaluationMetrics = self._evaluate_learner()
-        self.evaluation_environment.receive_context(asdict(results))
+        self.evaluation_environment.receive_context({
+            "context_type": "EvalMetrics",
+            "context_data": asdict(results)
+        })
+
+        if hasattr(self, "learner") and hasattr(self.learner, "update_eval_metrics"):
+            self.learner.update_eval_metrics(results) # type: ignore
 
         self._log_to_logger(results)
 
@@ -458,7 +488,8 @@ class BootstrapEvaluationCallback(EventCallback):
 
         if model_error < self.best_batch_error:
             if self.verbose > 0:
-                self.logger.record("info", "New best model error achieved!", exclude=["csv", "tensorboard"])
+                self.logger.record(
+                    "info", "New best model error achieved!", exclude=("csv", "tensorboard"))
 
             if self.best_model_save_path:
                 os.makedirs(self.best_model_save_path, exist_ok=True)

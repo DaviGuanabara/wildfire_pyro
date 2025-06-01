@@ -46,6 +46,8 @@ class SensorEnvironment(BaseEnvironment):
 
         self._define_context_handlers()
 
+
+
     def _define_context_handlers(self):
         self._context_handlers["EvaluationMetrics"] = self.on_evalmetrics
 
@@ -65,10 +67,16 @@ class SensorEnvironment(BaseEnvironment):
             context (EvaluationMetrics): The evaluation result dataclass.
         """
 
+        self._latest_eval_metrics = context["context_data"]
+
         if self.verbose:
             print(f"[Eval] Seed: {getattr(self, 'seed', None)}")
             print("Environment on_evalmetrics triggered, context:")
             print(context)
+
+
+    def get_latest_eval_metrics(self) -> Optional[dict]:
+        return self._latest_eval_metrics
 
     def _define_spaces(self):
         """
@@ -98,8 +106,8 @@ class SensorEnvironment(BaseEnvironment):
             Tuple[np.ndarray, dict]: Observação inicial e informações adicionais.
         """
 
-        super().reset(seed)
-        self.sensor_manager.reset(seed)
+        super().reset(seed or 0)
+        self.sensor_manager.reset(seed or 0) #TODO Random seed ?
 
         self.current_step = 0
         observation, self.ground_truth = self._generate_observation()
@@ -148,6 +156,18 @@ class SensorEnvironment(BaseEnvironment):
         """
         sensor_id = self.sensor_manager.state_tracker["current_sensor"]
         current_index = self.sensor_manager.state_tracker["current_time_index"]
+
+        if self.sensor_manager.cache["data_from_current_sensor"] is  None:
+            logging.warning(
+                "No data available for the current sensor. Returning empty sensor info."
+            )
+            return {
+                "lat": None,
+                "lon": None,
+                "t": None,
+                "sensor_id": sensor_id,
+            }
+        
         sensor_data = self.sensor_manager.cache["data_from_current_sensor"].iloc[
             current_index
         ]
@@ -162,8 +182,8 @@ class SensorEnvironment(BaseEnvironment):
         return sensor_info
 
     def _calculate_reward(self) -> float:
-
-        return None
+        # TODO: Maybe not useful in this context.
+        return 0.0
 
     def _is_terminated(self) -> bool:
         """
@@ -195,8 +215,6 @@ class SensorEnvironment(BaseEnvironment):
         # retirado da própria classe SensorManager, da base de dados.
         observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
         mask = np.zeros(self.n_neighbors_max, dtype=bool)
-
-        # Preenche a matriz com os deltas existentes
         num_neighbors = len(deltas)
         observation_matrix[:num_neighbors, :] = deltas.values
         mask[:num_neighbors] = True  # Vizinhos reais

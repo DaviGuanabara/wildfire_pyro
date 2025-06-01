@@ -13,9 +13,9 @@ class SupervisedLearningManager(BaseLearningManager):
         self,
         neural_network: torch.nn.Module,
         environment: BaseEnvironment,
-        logging_parameters=Dict[str, Any],
-        runtime_parameters=Dict[str, Any],
-        model_parameters=Dict[str, Any],
+        logging_parameters:Dict[str, Any],
+        runtime_parameters:Dict[str, Any],
+        model_parameters:Dict[str, Any],
     ):
         
         
@@ -23,11 +23,6 @@ class SupervisedLearningManager(BaseLearningManager):
                          model_parameters=model_parameters)
 
 
-        # Inicializa otimizador e loss function corretamente
-        self.optimizer = torch.optim.Adam(
-            self.neural_network.parameters(), lr=self.lr
-        )
-        self.loss_func = torch.nn.MSELoss()
         
     def predict(
         self, obs: np.ndarray, deterministic: bool = True
@@ -90,7 +85,10 @@ class SupervisedLearningManager(BaseLearningManager):
         loss.backward()
         self.optimizer.step()
 
-        average_loss: float = loss.item()
+        self.loss: float = loss.item()
         # print(f"[INFO] Train Loss: {average_loss:.4f}")
 
-        return average_loss
+
+        self._update_learning_rate()
+
+        return self.loss

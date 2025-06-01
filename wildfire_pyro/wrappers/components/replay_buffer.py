@@ -9,7 +9,7 @@ from wildfire_pyro.environments.base_environment import BaseEnvironment
 
 import torch
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 
 
 class ReplayBuffer:
@@ -48,7 +48,7 @@ class ReplayBuffer:
         self.position = 0
         self.full = False
 
-    def add(self, obs: np.ndarray, action: np.ndarray, target: float):
+    def add(self, obs: np.ndarray, action: np.ndarray, target: Union[float, torch.Tensor]):
         """
         Adds a transition to the buffer, replacing the oldest transition if the buffer is full.
 

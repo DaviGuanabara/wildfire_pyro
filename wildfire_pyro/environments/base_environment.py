@@ -27,12 +27,12 @@ class BaseEnvironment(Env, ABC):
         decoupled way, without having to modify the core control flow.
         
         Example usage:
-            self._context_handlers["EvalMetrics"] = self._handle_eval_metrics
+            self._context_handlers["EvaluationMetrics"] = self._handle_eval_metrics
 
         Args:
             context (dict): A dictionary with the following structure:
                 {
-                    "context_type": str,        # The name of the context class/type (e.g., "EvalMetrics")
+                    "context_type": str,        # The name of the context class/type (e.g., "EvaluationMetrics")
                     "context_data": Any         # The actual payload, e.g., a dataclass instance
                 }
 
@@ -71,7 +71,7 @@ class BaseEnvironment(Env, ABC):
         pass
 
     def reset(
-        self, seed: int = None, options: Optional[Dict[str, Any]] = None
+        self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[Any, Dict[str, Any]]:
         """
         Default implementation that sets the random seed.
@@ -109,7 +109,7 @@ class BaseEnvironment(Env, ABC):
     
 
     @abstractmethod
-    def get_bootstrap_observations(self):
+    def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, float]:
         pass
 
     
