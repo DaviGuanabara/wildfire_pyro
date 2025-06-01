@@ -14,12 +14,7 @@ from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
 
 """
-
-
-
-[19:16, 26/05/2025] Leonardo - Grupo De Estudo Ads Wildfire Ita - Ceds: Não sei como vc pensou nos critérios de parada, mas talvez seja mais interessante usar alguma coisa de early stopping + reduzir learning rate pela metade, ao invés do número de épocas
-
-
+TODO: Early stopping.
 """
 
 
