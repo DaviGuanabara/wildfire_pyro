@@ -307,7 +307,7 @@ class BootstrapEvaluationCallback(EventCallback):
         n_bootstrap: int = 4,
         eval_freq: int = 1000,  # steps per evaluation (SB3-style)
         best_model_save_path: Optional[str] = None,
-        verbose: int = 0,
+        verbose: int = False,
         seed: int = 42,
     ):
         """
@@ -455,10 +455,6 @@ class BootstrapEvaluationCallback(EventCallback):
             return True
 
         results: EvaluationMetrics = self._evaluate_learner()
-        self.evaluation_environment.receive_context({
-            "context_type": "EvalMetrics",
-            "context_data": asdict(results)
-        })
 
         if hasattr(self, "learner") and hasattr(self.learner, "update_eval_metrics"):
             self.learner.update_eval_metrics(results) # type: ignore

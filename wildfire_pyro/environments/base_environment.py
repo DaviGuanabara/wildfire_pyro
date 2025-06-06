@@ -12,40 +12,6 @@ class BaseEnvironment(Env, ABC):
     def __init__(self):
         self._context_handlers = {}
 
-    def receive_context(self, context: dict):
-        """
-        Receives contextual data from external components such as callbacks,
-        and dispatches the data to the appropriate handler registered in
-        `self._context_handlers`.
-
-        This method follows the Hollywood Principle: "Don't call us, we'll call you".
-        In this architecture, external components (e.g., EvalCallback) send structured
-        information to the environment, and the environment internally decides how to
-        handle it, based on pre-registered handlers.
-
-        This allows the user to extend the environment's behavior in a clean,
-        decoupled way, without having to modify the core control flow.
-        
-        Example usage:
-            self._context_handlers["EvaluationMetrics"] = self._handle_eval_metrics
-
-        Args:
-            context (dict): A dictionary with the following structure:
-                {
-                    "context_type": str,        # The name of the context class/type (e.g., "EvaluationMetrics")
-                    "context_data": Any         # The actual payload, e.g., a dataclass instance
-                }
-
-        Note:
-            - Handlers must be explicitly registered in the child class.
-            - If no handler is found, the context is silently ignored.
-            - This design promotes high cohesion and low coupling, and is open for extension
-            without requiring changes to the base class.
-        """
-        context_type = context.get("context_type")
-        handler = self._context_handlers.get(context_type, lambda context: print(f"The message {getattr(context, 'context_type', 'UNKNOWN')} has no handler."))
-        handler(context)
-
     def baseline(self):
         """Returns a baseline prediction. Should be overridden if applicable.
         it should return:

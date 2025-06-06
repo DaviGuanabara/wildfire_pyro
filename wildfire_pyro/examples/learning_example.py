@@ -10,7 +10,7 @@ from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
 from datetime import datetime
 from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
-
+from wildfire_pyro.helpers.custom_schedulers import DebugScheduler
 
 
 """
@@ -28,24 +28,7 @@ TODO: Early stopping.
 # Funções adicionais
 # ==================================================================================================
 
-def debug_lr_scheduler(
-    step=None,
-    progress_remaining=None,
-    loss=None,
-    evaluation_metrics=None,
-    **kwargs,
-) -> float:
-    print("\n[DEBUG LR SCHEDULER]")
-    print(f"  Step: {step}")
-    print(f"  Progress Remaining: {progress_remaining}")
-    print(f"  Loss: {loss}")
-    print(f"  Evaluation Metrics: {evaluation_metrics}")
 
-    for k, v in kwargs.items():
-        print(f"  {k}: {v}")
-
-    # Return a fixed learning rate
-    return 1e-3
 
 
 def get_path(file_name):
@@ -102,7 +85,7 @@ evaluations = 100
 
 
 model_parameters = {
-    "lr": debug_lr_scheduler , # 0.001,
+    "lr": DebugScheduler(lr=0.001, verbose=verbose),
     "dropout_prob": 0.2,
     "hidden": 64,
     "batch_size": 128,
@@ -157,9 +140,10 @@ eval_callback = BootstrapEvaluationCallback(
     validation_environment,
     best_model_save_path=logging_parameters.get("log_path"),
     seed=get_seed("Bootstrap_Evaluation_Callback"),
-    eval_freq=1_000,
+    eval_freq=5_000,
     n_eval=n_eval,
     n_bootstrap=n_bootstrap,
+    verbose=verbose,
 )
 
 
