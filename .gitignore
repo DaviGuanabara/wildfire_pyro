@@ -163,3 +163,5 @@ cython_debug/
 
 
 wildfire_pyro/examples/logs/
+wildfire_pyro/examples/data_explorer.py
+wildfire_pyro/examples/data_explorer2.py
