@@ -49,6 +49,12 @@ class SensorManager:
 
         }
 
+        # Liga sensor IDs a posições no DataFrame
+        self.sensor_index = {
+            sid: df_sdf.index.tolist()
+            for sid, df_sdf in self.data.groupby("sensor_id", sort=False)
+        }
+
         self.reset()
 
     def reset(self, seed: int = 0):
@@ -245,52 +251,21 @@ class SensorManager:
 
         return windowed_data[windowed_data[self.SENSOR_ID_TAG] != sensor_id]
 
+    def _select_random_neighbors(self, candidates: pd.DataFrame, num_neighbors: int) -> pd.DataFrame:
+        # Pega sensor IDs disponíveis
+        sids = candidates['sensor_id'].unique()
+        selected_sids = self.rng.choice(
+            sids, size=num_neighbors, replace=(num_neighbors > len(sids)))
 
-    def _select_random_neighbors(
-        self, candidates: pd.DataFrame, num_neighbors: int
-    ) -> pd.DataFrame:
-        """
-        Randomly selects neighbors from the filtered candidate pool in a fully reproducible way.
+        rows = []
+        for sid in selected_sids:
+            idxs = self.sensor_index.get(sid)
+            if not idxs:
+                continue
+            i = self.rng.integers(len(idxs))
+            rows.append(self.data.iloc[idxs[i]])
 
-        For each selected sensor, a single row is sampled using a fixed per-sensor seed
-        derived from the main RNG. This ensures the result is stable across runs given the same seed.
-        """
-
-        # Agrupa os candidatos por sensor
-        sensor_group_map = {
-            sid: group for sid, group in candidates.groupby("sensor_id", observed=True, sort=False)
-        }
-
-
-
-        available_sensor_ids = list(sensor_group_map.keys())
-
-        selected_sensor_ids = self.rng.choice(
-            np.array(available_sensor_ids, dtype=int),
-            size=num_neighbors,
-            replace=(num_neighbors > len(available_sensor_ids)),
-        )
-
-
-        # Inicializa um gerador secundário para manter a reprodutibilidade
-        seed_rng = np.random.default_rng(self.rng.integers(int(1e9)))
-
-        sampling_seeds = {
-            sensor_id: seed_rng.integers(int(1e9)) for sensor_id in selected_sensor_ids
-        }
-
-        # Amostra determinística para cada sensor escolhido
-        sampled_neighbors = pd.concat(
-            [
-                sensor_group_map[sensor_id].iloc[[
-                    sampling_seeds[sensor_id] % len(sensor_group_map[sensor_id])]]
-                for sensor_id in selected_sensor_ids
-            ],
-            ignore_index=True,
-        )
-
-
-        return sampled_neighbors
+        return pd.DataFrame(rows).reset_index(drop=True)
 
 
     def ensure_minimum_neighbors(

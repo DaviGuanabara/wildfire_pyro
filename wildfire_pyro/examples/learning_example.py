@@ -11,53 +11,17 @@ from datetime import datetime
 from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
 from wildfire_pyro.helpers.custom_schedulers import DebugScheduler
+from wildfire_pyro.helpers.learning_utils import get_path, log_evaluation
 
-
-"""
-TODO: Early stopping.
-"""
-
-
-
-
-
-
-
-
-# ==================================================================================================
-# Funções adicionais
-# ==================================================================================================
-
-
-
-
-def get_path(file_name):
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    relative_path = os.path.join("data", "synthetic", "fixed_sensor", file_name)
-    data_path = os.path.join(SCRIPT_DIR, relative_path)
-    return data_path
-
-
-def log_evaluation(metrics, info, step):
-    print(f"\n--- Step {step} ---")
-    print(f">> Evaluating Sensor (ID: {info["sensor"]['sensor_id']})")
-    print(
-        f"   Location: Latitude {info["sensor"]['lat']:.4f}, Longitude: {info["sensor"]['lon']:.4f}, Ground Truth: {info['ground_truth']:.4f}"
-    )
-    print(">> Bootstrap Model:")
-    print(
-        f"   Prediction: {metrics['mean_prediction']:.4f} ± {metrics['std_prediction']:.4f} | Error: {metrics['error']:.4f}"
-    )
-    print(">> Baseline:")
-    print(
-        f"   Prediction: {metrics['baseline_prediction']:.4f} ± {metrics['baseline_std']:.4f} | Error: {metrics['baseline_error']:.4f}"
-    )
 
 
 # ==================================================================================================
 # SETUP
 # Configurações do ambiente de treinamento e teste
 # Configurações do agente DeepSet
+#
+# TODO: environment_parameters dictionary
+# TODO: training_parameters dictionary
 # ==================================================================================================
 
 
@@ -76,7 +40,7 @@ n_neighbors_max = 30 # 50 no taxi bj
 verbose = False
 
 # Setup Training
-total_training_steps = 20_000
+total_training_steps = 200_000
 n_bootstrap = 2
 n_eval = 5 # 1600 ?
 
@@ -154,9 +118,8 @@ deep_set_learner = create_deep_set_learner(
 
 # ==================================================================================================
 # LEARNING
-#
-# TODO: Add multiple environments for training to boost performance ?
-# each environment in its own thread
+# TODO: Early stopping.
+# TODO: Maybe load the best model generated ?
 # ==================================================================================================
 
 train_environment.reset(runtime_parameters.get("seed", 42))
@@ -168,7 +131,7 @@ train_environment.close()
 validation_environment.close()
 print("Aprendizagem concluída")
 
-# TODO: Maybe load the best model generated ?
+
 
 # ==================================================================================================
 # Evaluation.
