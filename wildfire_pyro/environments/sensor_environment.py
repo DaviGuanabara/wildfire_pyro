@@ -167,34 +167,34 @@ class SensorEnvironment(BaseEnvironment):
 
     def _generate_observation(self) -> Tuple[np.ndarray, float]:
         """
-        Gera a observação e o ground truth para o passo atual.
+        Generates the observation and ground truth for the current step.
 
         Returns:
-            Tuple[np.ndarray, float]: Observação com shape (n_neighbors_max, 5) e ground truth.
+            Tuple[np.ndarray, float]: Observation with shape (n_neighbors_max, 5) and ground truth value.
         """
-        # Obtém os deltas dos vizinhos já processados
+        # Request neighbor deltas already preprocessed by the SensorManager
         deltas = self.sensor_manager.get_neighbors_deltas(
             self.n_neighbors_max, self.n_neighbors_min
         )
 
-        # Criação da matriz de observação (n_neighbors_max, 4)
-        # TODO: Esse hardcoded 4 é o tamanho do vetor de deltas. Deveria ser um parâmetro
-        # retirado da própria classe SensorManager, da base de dados.
-        observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
-        mask = np.zeros(self.n_neighbors_max, dtype=bool)
+        # Preallocate the observation array with shape (n_neighbors_max, 5)
+        # 4 columns for features + 1 column for the binary mask
+        observation = np.zeros((self.n_neighbors_max, 5), dtype=np.float32)
+
+        # Determine the number of valid neighbors
         num_neighbors = len(deltas)
-        observation_matrix[:num_neighbors, :] = deltas.values
-        mask[:num_neighbors] = True  # Vizinhos reais
 
-        # Concatena a máscara à matriz de observação
-        observation = np.hstack(
-            (observation_matrix, mask.reshape(-1, 1).astype(np.float32))
-        )
+        # Fill the observation matrix with valid neighbor deltas
+        observation[:num_neighbors, :4] = deltas.values
 
-        # Obtém o ground truth do SensorManager
+        # Set the mask column (index 4) to 1.0 for real neighbors
+        observation[:num_neighbors, 4] = 1.0
+
+        # Retrieve the ground truth value from the SensorManager
         ground_truth = self.sensor_manager.get_ground_truth()
 
         return observation, ground_truth
+
 
     def close(self):
         """
@@ -242,33 +242,35 @@ class SensorEnvironment(BaseEnvironment):
             )
         )
 
-        # Preallocate the full observation tensor with shape (n_bootstrap, n_neighbors_max, 5)
-        # Each observation has 4 features + 1 mask column
+
+        # Preallocate the observation tensor with shape (n_bootstrap, n_neighbors_max, 5)
+        # Each observation has 4 features (delta_x, delta_y, delta_t, y) + 1 binary mask column
         observations = np.zeros(
-            (n_bootstrap, self.n_neighbors_max, 5), dtype=np.float32
-        )
+            (n_bootstrap, self.n_neighbors_max, 5), dtype=np.float32)
 
-        # Process each bootstrap delta sample
-        # simply fufill the observation matrix with zeros
-        # and the mask with False values
-        # to keep a fix shape for neural network input
-        for i, deltas in enumerate(bootstrap_deltas):
-            num_neighbors = len(deltas)
+        # Iterate over each set of neighbor deltas returned by the SensorManager
+        for i, df in enumerate(bootstrap_deltas):
+            if df.empty:
+                continue  # Skip empty samples (no neighbors available)
 
-            # Create feature matrix (n_neighbors_max, 4) and mask (n_neighbors_max,)
-            observation_matrix = np.zeros((self.n_neighbors_max, 4), dtype=np.float32)
-            mask = np.zeros(self.n_neighbors_max, dtype=bool)
+            # Determine how many real neighbors we have (cannot exceed n_neighbors_max)
+            num_neighbors = min(len(df), self.n_neighbors_max)
 
-            if num_neighbors > 0:
-                # Copy actual delta values into the top rows of the observation matrix
-                observation_matrix[:num_neighbors, :] = deltas.values
-                mask[:num_neighbors] = True
+            # Extract the relevant 4 features and convert to NumPy
+            values = df.iloc[:num_neighbors, :4].to_numpy(dtype=np.float32)
 
-            # Concatenate feature matrix and mask to form one observation matrix
-            # Shape: (n_neighbors_max, 5)
-            observations[i] = np.hstack(
-                (observation_matrix, mask.reshape(-1, 1).astype(np.float32))
-            )
+            # Create a padded observation matrix for this sample (fixed shape)
+            obs = np.zeros((self.n_neighbors_max, 5), dtype=np.float32)
+
+            # Fill in the top rows with the actual neighbor deltas
+            obs[:num_neighbors, :4] = values
+
+            # Set the mask column (index 4) to 1.0 for real neighbors
+            obs[:num_neighbors, 4] = 1.0
+
+            # Assign the constructed observation into the main batch array
+            observations[i] = obs
+
 
         return observations, ground_truth
 
@@ -288,7 +290,8 @@ class SensorEnvironment(BaseEnvironment):
             self.sensor_manager.get_bootstrap_neighbors_deltas(force_recompute=False)
         )
 
-        prediction = np.mean([df["y"].mean() for df in bootstrap_deltas])
-        standart_deviation = np.std([df["y"].mean() for df in bootstrap_deltas])
+        y_means = [df["y"].mean() for df in bootstrap_deltas]
+        prediction = np.mean(y_means)
+        standard_deviation = np.std(y_means)
 
-        return prediction, standart_deviation, ground_truth
+        return prediction, standard_deviation, ground_truth

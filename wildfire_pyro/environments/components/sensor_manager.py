@@ -13,6 +13,8 @@ class SensorManager:
     LATITUDE_TAG = "lat"
     LONGITUDE_TAG = "lon"
     SENSOR_ID_TAG = "sensor_id"
+    SENSOR_FEATURES = ["t", "lat", "lon", "y"]
+
 
     def __init__(self, data_path, verbose: bool = False):
         """
@@ -22,12 +24,31 @@ class SensorManager:
             data_path (str): Path to the dataset file.
         """
         self.data = pd.read_csv(data_path)
+
+
+        # Após ler o CSV
+        #reorder columns to have 't' first if it exists
+        cols = list(self.data.columns)
+        if self.TIME_TAG in cols:
+            cols.insert(0, cols.pop(cols.index(self.TIME_TAG)))
+            self.data = self.data[cols]
+
+
         self.data = self.data.sort_values(by="t").reset_index(drop=True)
 
         self.data["sensor_id"] = self.data.groupby(["lat", "lon"]).ngroup()
         self.sensors = self.data["sensor_id"].unique()
 
+
         self.verbose = verbose
+
+        # Build a lookup map for fast access to each sensor's data
+        self.sensor_data_map: dict[int, pd.DataFrame] = {
+            int(sensor_id): df.reset_index(drop=True) # type: ignore
+            for sensor_id, df in self.data.groupby("sensor_id", observed=True)
+
+        }
+
         self.reset()
 
     def reset(self, seed: int = 0):
@@ -58,6 +79,7 @@ class SensorManager:
             "bootstrap_neighbors": None,
         }
 
+        
         self._select_random_sensor()
 
     def set_random_time_index(self):
@@ -79,12 +101,13 @@ class SensorManager:
             int: The randomly selected sensor ID.
         """
         self.state_tracker["current_sensor"] = self.rng.choice(self.sensors)
-
-        self.cache["data_from_current_sensor"] = self.data[
-            self.data["sensor_id"] == self.state_tracker["current_sensor"]
+        self.cache["data_from_current_sensor"] = self.sensor_data_map[
+            self.state_tracker["current_sensor"]
         ]
 
         self.set_random_time_index()
+
+        
 
     def step(self):
         """
@@ -111,8 +134,12 @@ class SensorManager:
         if sensor_df is None:
             raise RuntimeError("Sensor data is not initialized in cache.")
 
-        reading = sensor_df.iloc[self.state_tracker["current_time_index"]].drop(
-            "sensor_id")
+        #reading = sensor_df.iloc[self.state_tracker["current_time_index"]].drop(
+        #    "sensor_id")
+        
+        reading = sensor_df.loc[self.state_tracker["current_time_index"],
+                                self.SENSOR_FEATURES]
+
 
 
         # Salva a leitura atual e o ground truth no cache
@@ -153,7 +180,7 @@ class SensorManager:
             return self.cache["neighbors"]
 
         neighbors = self._compute_neighbors(
-            n_neighbors_min, n_neighbors_max, time_window
+            n_neighbors_min, n_neighbors_max, time_window=time_window, distance_window=distance_window
         )
 
         self.cache["neighbors"] = neighbors
@@ -162,7 +189,7 @@ class SensorManager:
         return neighbors
 
     def _compute_neighbors(
-        self, n_neighbors_min, n_neighbors_max, time_window
+        self, n_neighbors_min, n_neighbors_max, time_window, distance_window
     ) -> pd.DataFrame:
         """
         Computes the neighbors for the current sensor within a specified time window.
@@ -172,7 +199,8 @@ class SensorManager:
         timestamp = self._get_current_timestamp()
 
         # Filtrar dados na janela de tempo e remover o sensor atual
-        candidate_neighbors = self._filter_candidates(timestamp, time_window, sensor_id)
+        candidate_neighbors = self._filter_candidates(
+            timestamp=timestamp, time_window=time_window, sensor_id=sensor_id, distance_window=distance_window)
 
         if candidate_neighbors.empty:
             logger.info(f"No neighbors found for the sensor {sensor_id}.")
@@ -193,18 +221,30 @@ class SensorManager:
         return self.cache["data_from_current_sensor"].iloc[current_index][self.TIME_TAG]
 
     def _filter_candidates(
-        self, timestamp: float, time_window: int, sensor_id: int
+        self, sensor_id: int, timestamp: float, time_window: int = -1, distance_window: float = -1
     ) -> pd.DataFrame:
         """
         Filters potential neighbors within the specified time window,
         excluding the current sensor.
         """
         start_time = 0 if time_window == -1 else timestamp - time_window
-        windowed_data = self.data[
-            (self.data[self.TIME_TAG] >= start_time)
-            & (self.data[self.TIME_TAG] <= timestamp)
-        ]
+
+
+        mask = self.data[self.TIME_TAG].between(start_time, timestamp)
+        windowed_data = self.data.loc[mask]
+
+        # Aplica filtro espacial se necessário
+        if distance_window > 0:
+            ref_lat, ref_lon = self.get_current_sensor_position()
+            d_lat = windowed_data[self.LATITUDE_TAG] - ref_lat
+            d_lon = windowed_data[self.LONGITUDE_TAG] - ref_lon
+            distance = np.sqrt(d_lat**2 + d_lon**2)
+            windowed_data = windowed_data[distance <= distance_window]
+
+
+
         return windowed_data[windowed_data[self.SENSOR_ID_TAG] != sensor_id]
+
 
     def _select_random_neighbors(
         self, candidates: pd.DataFrame, num_neighbors: int
@@ -216,39 +256,42 @@ class SensorManager:
         derived from the main RNG. This ensures the result is stable across runs given the same seed.
         """
 
-        # Identify all unique sensors available in the candidates
-        unique_sensors = candidates[self.SENSOR_ID_TAG].unique()
-
-        # Randomly choose which sensors will be selected
-        selected_sensors = self.rng.choice(
-            unique_sensors,
-            size=num_neighbors,
-            replace=(num_neighbors > len(unique_sensors)),
-        )
-
-        # Initialize a secondary RNG to assign deterministic seeds for each selected sensor
-        seed_rng = np.random.default_rng(self.rng.integers(int(1e9)))
-
-        # Build a mapping from sensor_id to its sampling seed
-        sampling_seeds = {
-            sensor_id: seed_rng.integers(int(1e9)) for sensor_id in selected_sensors
+        # Agrupa os candidatos por sensor
+        sensor_group_map = {
+            sid: group for sid, group in candidates.groupby("sensor_id", observed=True, sort=False)
         }
 
-        # Filter candidate rows for the selected sensors
-        selected_rows = candidates[
-            candidates[self.SENSOR_ID_TAG].isin(selected_sensors)
-        ]
 
-        # Sample one row per sensor using its assigned seed
-        sampled_neighbors = (
-            selected_rows.groupby(self.SENSOR_ID_TAG, group_keys=False)
-            .apply(
-                lambda group: group.sample(n=1, random_state=sampling_seeds[group.name])
-            )
-            .reset_index(drop=True)
+
+        available_sensor_ids = list(sensor_group_map.keys())
+
+        selected_sensor_ids = self.rng.choice(
+            np.array(available_sensor_ids, dtype=int),
+            size=num_neighbors,
+            replace=(num_neighbors > len(available_sensor_ids)),
         )
 
+
+        # Inicializa um gerador secundário para manter a reprodutibilidade
+        seed_rng = np.random.default_rng(self.rng.integers(int(1e9)))
+
+        sampling_seeds = {
+            sensor_id: seed_rng.integers(int(1e9)) for sensor_id in selected_sensor_ids
+        }
+
+        # Amostra determinística para cada sensor escolhido
+        sampled_neighbors = pd.concat(
+            [
+                sensor_group_map[sensor_id].iloc[[
+                    sampling_seeds[sensor_id] % len(sensor_group_map[sensor_id])]]
+                for sensor_id in selected_sensor_ids
+            ],
+            ignore_index=True,
+        )
+
+
         return sampled_neighbors
+
 
     def ensure_minimum_neighbors(
         self, n_neighbors_max, n_neighbors_min, time_window, distance_window
@@ -343,10 +386,16 @@ class SensorManager:
         delta_columns = [col for col in neighbors.columns if col != "y"]
 
         # Delta calculation: neighbors - reference
-        deltas = neighbors[delta_columns].subtract(reference[delta_columns], axis=1)
+        ref_array = reference[delta_columns].to_numpy()
 
-        # Preserve 'y' from the neighbors
+
+        delta_array = neighbors[delta_columns].to_numpy() - ref_array
+        deltas = pd.DataFrame(delta_array, columns=delta_columns,
+                            index=neighbors.index)
+        
+        # preserve the 'y' value from neighbors
         deltas["y"] = neighbors["y"]
+
 
         return deltas
 
@@ -376,9 +425,10 @@ class SensorManager:
             raise ValueError("Nenhum sensor selecionado. Chame `step()` primeiro.")
 
         # Obtain the value of the time based on the index of current time
-        current_time = self.cache["data_from_current_sensor"][self.TIME_TAG].iloc[
-            self.state_tracker["current_time_index"]
-        ]
+        i = self.state_tracker["current_time_index"]
+        sensor_df = self.cache["data_from_current_sensor"]
+        current_time = sensor_df.iloc[i][self.TIME_TAG]
+
         return current_time
 
     # IN DEVELOPMENT
@@ -449,7 +499,7 @@ class SensorManager:
         for _ in range(n_bootstrap):
             # Call _compute_neighbors directly (bypassing the cache in get_neighbors)
             neighbors = self._compute_neighbors(
-                n_neighbors_min, n_neighbors_max, time_window
+                n_neighbors_min=n_neighbors_min, n_neighbors_max=n_neighbors_max, time_window=time_window, distance_window=distance_window
             )
             bootstrap_neighbors.append(neighbors)
 
