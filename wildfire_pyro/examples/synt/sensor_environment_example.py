@@ -1,4 +1,4 @@
-from wildfire_pyro.environments.sensor_environment import SensorEnvironment
+from wildfire_pyro.environments.sensor.sensor_environment import SensorEnvironment
 import numpy as np
 import sys
 import os

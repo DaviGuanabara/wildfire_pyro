@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from wildfire_pyro.environments.sensor_environment import SensorEnvironment
+from wildfire_pyro.environments.sensor.sensor_environment import SensorEnvironment
 
 # Set up the path to the test data file
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

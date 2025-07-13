@@ -4,8 +4,8 @@ import logging
 from typing import Tuple, Optional
 from gymnasium import spaces, Env
 
-from wildfire_pyro.environments.components.sensor_manager import SensorManager
-from wildfire_pyro.environments.base_environment import BaseEnvironment
+from wildfire_pyro.environments.sensor.components.sensor_manager import SensorManager
+from wildfire_pyro.environments.sensor.base_environment import BaseEnvironment
 
 # Configuração básica do logging
 logging.basicConfig(level=logging.INFO)
