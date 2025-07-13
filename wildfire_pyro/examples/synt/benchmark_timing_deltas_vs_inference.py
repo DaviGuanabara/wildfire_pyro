@@ -1,7 +1,7 @@
 import time
 import torch
 import numpy as np
-from wildfire_pyro.environments.sensor_environment import SensorEnvironment
+from wildfire_pyro.environments.sensor.sensor_environment import SensorEnvironment
 from wildfire_pyro.factories.learner_factory import create_deep_set_learner
 from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 
