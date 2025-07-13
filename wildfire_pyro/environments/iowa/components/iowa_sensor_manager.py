@@ -9,13 +9,6 @@ logger.setLevel(logging.INFO)
 
 class IOWASensorManager:
 
-    TIME_TAG = "t"
-    LATITUDE_TAG = "lat"
-    LONGITUDE_TAG = "lon"
-    SENSOR_ID_TAG = "sensor_id"
-    SENSOR_FEATURES = ["t", "lat", "lon", "y"]
-
-
     def __init__(self, data_path, verbose: bool = False):
         """
         Initialize the SensorManager with the dataset.
@@ -23,57 +16,70 @@ class IOWASensorManager:
         Args:
             data_path (str): Path to the dataset file.
         """
+
+        # TODO: LOAD DATA.
+        # JOGAR O EXAM
         self.data = pd.read_csv(data_path)
 
-
         # Após ler o CSV
-        #reorder columns to have 't' first if it exists
+        # reorder columns to have 't' first if it exists
         cols = list(self.data.columns)
-        if self.TIME_TAG in cols:
-            cols.insert(0, cols.pop(cols.index(self.TIME_TAG)))
+        if self.tags["time"] in cols:
+            cols.insert(0, cols.pop(cols.index(self.tags["time"])))
             self.data = self.data[cols]
 
+        self.data = self.data.sort_values(by=self.tags["time"]).reset_index(drop=True)
 
-        self.data = self.data.sort_values(by="t").reset_index(drop=True)
-
-        self.data["sensor_id"] = self.data.groupby(["lat", "lon"]).ngroup()
-        self.sensors = self.data["sensor_id"].unique()
-
+        # ACHO QUE NÃO FAZ SENTIDO GERAR UM ID, UMA VEZ QUE JÁ TEM.
+        self.sensors = self.data[self.tags["ID"]].unique()
 
         self.verbose = verbose
 
         # Build a lookup map for fast access to each sensor's data
         self.sensor_data_map: dict[int, pd.DataFrame] = {
-            int(sensor_id): df.reset_index(drop=True) # type: ignore
-            for sensor_id, df in self.data.groupby("sensor_id", observed=True)
-
+            int(sensor_id): df.reset_index(drop=True)  # type: ignore
+            for sensor_id, df in self.data.groupby(self.tags["ID"], observed=True)
         }
 
         # Liga sensor IDs a posições no DataFrame
         self.sensor_index = {
             sid: df_sdf.index.tolist()
-            for sid, df_sdf in self.data.groupby("sensor_id", sort=False)
+            for sid, df_sdf in self.data.groupby(self.tags["ID"], sort=False)
         }
 
         self.reset()
 
     def init_tags(self):
 
-
         self.tags = {
-
             "time": "data",
             "latitude": "Latitude1",
             "longitude": "Longitude1",
-            "altitude": "Elevation [m]",  
+            "altitude": "Elevation [m]",
             "id": "ID",
             "target": "y",
-            "features": [ "high", "low", "rh_min", "rh", "rh_max", "solar_mj", "precip", "speed", "gust", "et",
-        "lwmv_1", "lwmv_2", "lwmdry_1_tot", "lwmcon_1_tot", "lwmwet_1_tot",
-        "lwmdry_2_tot", "lwmcon_2_tot", "lwmwet_2_tot", "bpres_avg"]
+            "features": [
+                "high",
+                "low",
+                "rh_min",
+                "rh",
+                "rh_max",
+                "solar_mj",
+                "precip",
+                "speed",
+                "gust",
+                "et",
+                "lwmv_1",
+                "lwmv_2",
+                "lwmdry_1_tot",
+                "lwmcon_1_tot",
+                "lwmwet_1_tot",
+                "lwmdry_2_tot",
+                "lwmcon_2_tot",
+                "lwmwet_2_tot",
+                "bpres_avg",
+            ],
         }
-
-
 
     def reset(self, seed: int = 0):
         """
@@ -103,7 +109,6 @@ class IOWASensorManager:
             "bootstrap_neighbors": None,
         }
 
-        
         self._select_random_sensor()
 
     def set_random_time_index(self):
@@ -131,8 +136,6 @@ class IOWASensorManager:
 
         self.set_random_time_index()
 
-        
-
     def step(self):
         """
         Randomly select a sensor and update its corresponding data.
@@ -153,21 +156,26 @@ class IOWASensorManager:
         if self.state_tracker["current_sensor"] is None:
             raise ValueError("No sensor selected. Call `reset()` first.")
 
-
         sensor_df = self.cache.get("data_from_current_sensor")
         if sensor_df is None:
             raise RuntimeError("Sensor data is not initialized in cache.")
 
-        #reading = sensor_df.iloc[self.state_tracker["current_time_index"]].drop(
+        # reading = sensor_df.iloc[self.state_tracker["current_time_index"]].drop(
         #    "sensor_id")
-        
-        #TODO: CORRIGIR O NOME E O USO DO SENSOR FEATURES
-        #SENSOR FEATURES ESTÁ SENDO ERRONEAMENTE NOMEADO. É COMO SE FOSSE TODAS AS COLUNAS, E NÃO SÓ
+
+        # TODO: CORRIGIR O NOME E O USO DO SENSOR FEATURES
+        # SENSOR FEATURES ESTÁ SENDO ERRONEAMENTE NOMEADO. É COMO SE FOSSE TODAS AS COLUNAS, E NÃO SÓ
         # as colunas de interesse do sensor.
-        reading = sensor_df.loc[self.state_tracker["current_time_index"],
-                                self.SENSOR_FEATURES]
-
-
+        meta_cols = [
+            self.tags["time"],
+            self.tags["latitude"],
+            self.tags["longitude"],
+            self.tags["altitude"],
+            self.tags["id"],
+            self.tags["target"],
+        ]
+        cols_to_use = meta_cols + self.tags["features"]
+        reading = sensor_df.loc[self.state_tracker["current_time_index"], cols_to_use]
 
         # Salva a leitura atual e o ground truth no cache
         self.cache["current_reading"] = reading
@@ -207,7 +215,10 @@ class IOWASensorManager:
             return self.cache["neighbors"]
 
         neighbors = self._compute_neighbors(
-            n_neighbors_min, n_neighbors_max, time_window=time_window, distance_window=distance_window
+            n_neighbors_min,
+            n_neighbors_max,
+            time_window=time_window,
+            distance_window=distance_window,
         )
 
         self.cache["neighbors"] = neighbors
@@ -227,7 +238,11 @@ class IOWASensorManager:
 
         # Filtrar dados na janela de tempo e remover o sensor atual
         candidate_neighbors = self._filter_candidates(
-            timestamp=timestamp, time_window=time_window, sensor_id=sensor_id, distance_window=distance_window)
+            timestamp=timestamp,
+            time_window=time_window,
+            sensor_id=sensor_id,
+            distance_window=distance_window,
+        )
 
         if candidate_neighbors.empty:
             logger.info(f"No neighbors found for the sensor {sensor_id}.")
@@ -248,14 +263,17 @@ class IOWASensorManager:
         return self.cache["data_from_current_sensor"].iloc[current_index][self.TIME_TAG]
 
     def _filter_candidates(
-        self, sensor_id: int, timestamp: float, time_window: int = -1, distance_window: float = -1
+        self,
+        sensor_id: int,
+        timestamp: float,
+        time_window: int = -1,
+        distance_window: float = -1,
     ) -> pd.DataFrame:
         """
         Filters potential neighbors within the specified time window,
         excluding the current sensor.
         """
         start_time = 0 if time_window == -1 else timestamp - time_window
-
 
         mask = self.data[self.TIME_TAG].between(start_time, timestamp)
         windowed_data = self.data.loc[mask]
@@ -268,15 +286,16 @@ class IOWASensorManager:
             distance = np.sqrt(d_lat**2 + d_lon**2)
             windowed_data = windowed_data[distance <= distance_window]
 
-
-
         return windowed_data[windowed_data[self.SENSOR_ID_TAG] != sensor_id]
 
-    def _select_random_neighbors(self, candidates: pd.DataFrame, num_neighbors: int) -> pd.DataFrame:
+    def _select_random_neighbors(
+        self, candidates: pd.DataFrame, num_neighbors: int
+    ) -> pd.DataFrame:
         # Pega sensor IDs disponíveis
-        sids = candidates['sensor_id'].unique()
+        sids = candidates["sensor_id"].unique()
         selected_sids = self.rng.choice(
-            sids, size=num_neighbors, replace=(num_neighbors > len(sids)))
+            sids, size=num_neighbors, replace=(num_neighbors > len(sids))
+        )
 
         rows = []
         for sid in selected_sids:
@@ -287,7 +306,6 @@ class IOWASensorManager:
             rows.append(self.data.iloc[idxs[i]])
 
         return pd.DataFrame(rows).reset_index(drop=True)
-
 
     def ensure_minimum_neighbors(
         self, n_neighbors_max, n_neighbors_min, time_window, distance_window
@@ -367,8 +385,7 @@ class IOWASensorManager:
         self, neighbors: pd.DataFrame, reference: pd.Series
     ) -> pd.DataFrame:
         """
-        Computes the deltas between the reference sensor and its neighbors,
-        preserving the 'y' value from each neighbor.
+
 
         Args:
             neighbors (pd.DataFrame): Data from neighboring sensors.
@@ -378,20 +395,18 @@ class IOWASensorManager:
             pd.DataFrame: Calculated deltas for each variable, with 'y' preserved from the neighbors.
         """
 
-        # Variables to compute deltas (excluding 'y')
-        delta_columns = [col for col in neighbors.columns if col != "y"]
+        # Variables to compute deltas (spatial variables)
+        target_col = self.tags["target"]
+        delta_columns = [col for col in neighbors.columns if col != target_col]
 
         # Delta calculation: neighbors - reference
         ref_array = reference[delta_columns].to_numpy()
 
-
         delta_array = neighbors[delta_columns].to_numpy() - ref_array
-        deltas = pd.DataFrame(delta_array, columns=delta_columns,
-                            index=neighbors.index)
-        
+        deltas = pd.DataFrame(delta_array, columns=delta_columns, index=neighbors.index)
+
         # preserve the 'y' value from neighbors
         deltas["y"] = neighbors["y"]
-
 
         return deltas
 
@@ -495,7 +510,10 @@ class IOWASensorManager:
         for _ in range(n_bootstrap):
             # Call _compute_neighbors directly (bypassing the cache in get_neighbors)
             neighbors = self._compute_neighbors(
-                n_neighbors_min=n_neighbors_min, n_neighbors_max=n_neighbors_max, time_window=time_window, distance_window=distance_window
+                n_neighbors_min=n_neighbors_min,
+                n_neighbors_max=n_neighbors_max,
+                time_window=time_window,
+                distance_window=distance_window,
             )
             bootstrap_neighbors.append(neighbors)
 
