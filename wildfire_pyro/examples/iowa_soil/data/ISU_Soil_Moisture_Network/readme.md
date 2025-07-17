@@ -1,123 +1,125 @@
-# 📄 **README — Iowa Environmental Mesonet (IEM) Dataset**
 
-## 🌎 **Fonte de dados**
+## 🧠 Project Overview
 
-Este conjunto de dados foi coletado a partir do **Iowa Environmental Mesonet (IEM)**, administrado pela Iowa State University.  
-
-- **Estações meteorológicas (ISUSM Network):**  
-  [IEM Stations — ISUSM Network](https://mesonet.agron.iastate.edu/sites/networks.php?network=ISUSM)
-
-- **Dados climáticos diários:**  
-  [AgClimate Daily Data Tool](https://mesonet.agron.iastate.edu/agclimate/hist/daily.php)
+This project aims to build a predictive model that relates **daily microclimate variables** to **Leaf Wetness Measurement (LWM)** — a key indicator for fungal and bacterial disease risk in vineyards. Data was collected from the [Iowa Environmental Mesonet (IEM)](https://mesonet.agron.iastate.edu), focusing on **vineyard weather stations** across the state of Iowa (USA).
 
 ---
 
-## 🛰️ **Estações selecionadas**
+## 📍 Motivation
 
-As estações foram selecionadas manualmente na interface oficial do IEM. Informações detalhadas (como posição exata no mapa, coordenadas e metadados) podem ser obtidas diretamente em:  
-[AgClimate Daily — Station Metadata](https://mesonet.agron.iastate.edu/agclimate/hist/daily.php)
-
-Estações principais (exemplo):  
-- Ames — Horticulture (Vineyard)
-- Bankston — Park Farm Winery (Vineyard)
-- Oskaloosa — Tassel Ridge (Vineyard)
-- Glenwood — Blackwing Vineyard (Vineyard)
-- Ames-AEA (SoilVue)
-- Ames-Kitchen (SoilVue)
-- Jefferson (SoilVue)
+Leaf wetness is a critical environmental condition for the development of plant diseases. Accurate prediction enables early intervention in vineyard disease management and irrigation planning.
 
 ---
 
-## 🌤️ **Variáveis selecionadas**
+## 🌐 Data Source
 
-Na interface de download (`https://mesonet.agron.iastate.edu/agclimate/hist/daily.php`), foram **marcadas as seguintes caixas**:
-
-### **Variáveis gerais (climáticas):**
-
-- High Temperature [F]
-- Low Temperature [F]
-- Minimum Relative Humidity [%]
-- Average Relative Humidity [%]
-- Maximum Relative Humidity [%]
-- Solar Radiation [MJ/m²]
-- Precipitation [inch]
-- Average Wind Speed [mph]
-- Wind Gust [mph]
-- Reference Evapotranspiration [inch]
-- Barometric Pressure Average [mb]
+- **Main portal:** [IEM AgClimate Daily Tool](https://mesonet.agron.iastate.edu/agclimate/hist/daily.php)
+- **Station network:** [ISUSM – Iowa State University Soil Moisture Network](https://mesonet.agron.iastate.edu/sites/networks.php?network=ISUSM)
 
 ---
 
-### **Variáveis específicas de vinhedos (Vineyard Station-only Variables):**
+## 📅 Time Span
 
-- lwmv_1
-- lwmv_2
-- lwmdry_1_tot
-- lwmdry_2_tot
-- lwmcon_1_tot
-- lwmcon_2_tot
-- lwmwet_1_tot
-- lwmwet_2_tot
+- **Start Date:** 2020-01-01  
+- **End Date:** 2025-06-30
 
 ---
 
-### **Variáveis de solo (SoilVue — nas estações específicas):**
+## 🛰️ Selected Stations
 
-- Soil temperature and moisture at multiple depths:
-  - sv_t2, sv_vwc2
-  - sv_t4, sv_vwc4
-  - sv_t8, sv_vwc8
-  - sv_t12, sv_vwc12
-  - sv_t14, sv_vwc14
-  - sv_t16, sv_vwc16
-  - sv_t20, sv_vwc20
-  - sv_t24, sv_vwc24
-  - sv_t28, sv_vwc28
-  - sv_t30, sv_vwc30
-  - sv_t32, sv_vwc32
-  - sv_t36, sv_vwc36
-  - sv_t40, sv_vwc40
-  - sv_t42, sv_vwc42
-  - sv_t52, sv_vwc52
+| Station Name                        | Code  | Type       | Used? |
+|------------------------------------|-------|------------|-------|
+| Ames – Horticulture Vineyard       | AHTI4 | Vineyard   | ✅ Yes |
+| Bankston – Park Farm Winery        | BNKI4 | Vineyard   | ✅ Yes |
+| Oskaloosa – Tassel Ridge           | OSTI4 | Vineyard   | ✅ Yes |
+| Glenwood – Blackwing Vineyard      | GVNI4 | Vineyard   | ✅ Yes |
+| Ames – Finch Farm (central station)| AMFI4 | Central    | ❌ Removed (not vineyard-related) |
 
 ---
 
-## 💾 **Formato e flags**
+## 🌡️ Collected Variables
 
-- **Formato de download:** Microsoft Excel (.xlsx)
-- **Missing values:** Representados como células vazias
-- **Quality Control Flags:** Incluídas (colunas terminadas em `_f`), posteriormente removidas no processamento final
-- **Download direto para o disco:** Sim (caixa marcada)
+### 📌 General climatic variables (used as features):
 
----
+- `high`: Daily max temperature [°F]
+- `low`: Daily min temperature [°F]
+- `rh`, `rh_min`, `rh_max`: Relative humidity [%]
+- `solar_mj`: Solar radiation [MJ/m²]
+- `precip`: Precipitation [inches]
+- `speed`: Average wind speed [mph]
+- `gust`: Wind gust [mph]
+- `et`: Reference evapotranspiration [inches]
+- `bpres_avg`: Barometric pressure [mb]
 
-## ⚙️ **Processamento realizado**
+### 🍇 Vineyard-specific variables (LWM – used as target):
 
-- Merge com metadados das estações (incluindo coordenadas)
-- Renomeação e padronização das colunas
-- Remoção de colunas vazias e flags de qualidade
-- Remoção de colunas de metadados desnecessárias
-- Exclusão de linhas com valores faltantes
-- Export final para arquivo `dataset_cleaned.xlsx`
+- `lwmv_1`, `lwmv_2`: Leaf wetness measurement (sensor 1 and 2)
+- `lwmdry_1_tot`, `lwmdry_2_tot`: Total dry hours
+- `lwmwet_1_tot`, `lwmwet_2_tot`: Total wet hours
+- `lwmcon_1_tot`, `lwmcon_2_tot`: Consecutive wet hours
 
----
+### 🌱 SoilVue (removed):
 
-## 🗺️ **Posição geográfica**
-
-As coordenadas (latitude e longitude), elevação e demais atributos das estações podem ser consultados em:  
-[ISUSM Station Metadata](https://mesonet.agron.iastate.edu/sites/networks.php?network=ISUSM)
-
----
-
-## ✉️ **Contato e observações**
-
-Este dataset foi coletado para fins de pesquisa em microclima e previsão de condições para viticultura (molhamento foliar, risco de doenças, etc.).  
-Em caso de dúvidas ou sugestões, entrar em contato com o responsável técnico do projeto.
+Soil temperature and moisture data were discarded due to lack of coverage across vineyard stations.
 
 ---
 
-## ✅ **Status**
+## ⚙️ Preprocessing Summary
 
-- 🔎 Dados baixados e revisados
-- 💻 Dataset final limpo salvo
-- 📄 Documentação consolidada (este README)
+1. ✅ Merged data with station metadata (name, coordinates, elevation)
+2. ✅ Renamed and standardized columns
+3. ✅ Removed:
+   - Central station (no vineyard data)
+   - Soil-related columns (`sv_*`)
+   - Columns with >50% missing values
+   - `_f` quality flag columns (after inspection)
+4. ✅ Dropped rows with missing target or essential features
+5. ✅ Final dataset exported to `dataset_cleaned.xlsx`
+
+---
+
+## 🏷️ About `_f` Quality Flags
+
+Each variable has an associated quality flag (suffix `_f`), used by IEM for internal quality control:
+
+| Flag | Meaning                                 |
+|------|------------------------------------------|
+| `E`  | Estimated (value inferred by IEM)        |
+| `M`  | Missing                                  |
+| `T`  | Trace amount (extremely small)           |
+| `A`  | Accumulated across multiple days         |
+
+➡️ Values marked as `E` (Estimated) were retained in the cleaned dataset. Others were discarded.
+
+---
+
+## 🧪 Modeling Strategy
+
+- **Task:** Regression — Predict LWM using daily weather conditions.
+- **Target variable (initial):** `lwmv_1`
+- **Baseline models:** Linear regression, Random Forest
+- **Future models:** Attention-based neural networks, spatiotemporal modeling
+
+---
+
+## ✅ Recommended Variables (Phase 1)
+
+| Variable        | Include? | Rationale                                          |
+|----------------|----------|----------------------------------------------------|
+| `high`, `low`  | ✅ Yes    | Core predictors (temperature range)                |
+| `solar_mj`     | ✅ Yes    | Key for evaporation and drying                    |
+| `precip`       | ✅ Yes    | Direct impact on leaf wetness                     |
+| `rh`, `rh_min` | ✅ Yes    | Controls moisture retention                       |
+| `speed`        | ⚖️ Optional | Wind contributes to drying                     |
+| `et`           | ⚖️ Optional | Derived metric; useful but redundant             |
+| `bpres_avg`    | ⚖️ Optional | Indirectly relates to precipitation patterns     |
+
+---
+
+## 📤 Current Output
+
+- ✅ Clean dataset: `dataset_cleaned.xlsx`
+- ✅ Feature/target schema defined
+- 🚧 Modeling pipeline in development
+- 🧾 This document serves as a technical reference
+
