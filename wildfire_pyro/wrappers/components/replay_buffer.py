@@ -48,14 +48,14 @@ class ReplayBuffer:
         self.position = 0
         self.full = False
 
-    def add(self, obs: np.ndarray, action: np.ndarray, target: Union[float, torch.Tensor]):
+    def add(self, obs: np.ndarray, action: np.ndarray, target: np.ndarray):
         """
         Adds a transition to the buffer, replacing the oldest transition if the buffer is full.
 
         Args:
             obs (np.ndarray): Current observation.
             action (np.ndarray): Action taken.
-            target (float): Optimal action associated.
+            target (np.ndarray): Optimal action associated.
         """
         # Use circular buffer logic: Overwrite the oldest data instead of throwing an error
         idx = self.position % self.max_size  # Circular index

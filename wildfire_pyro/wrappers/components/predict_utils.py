@@ -3,6 +3,7 @@ import numpy as np
 from typing import Union, Tuple, Optional
 
 
+
 def predict_model(
     neural_network: torch.nn.Module,
     observation: np.ndarray,

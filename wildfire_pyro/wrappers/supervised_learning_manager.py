@@ -5,21 +5,22 @@ from typing import Any, Dict, Optional, Tuple
 
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
-from wildfire_pyro.wrappers.components.target_provider import InfoFieldTargetProvider, BaseTargetProvider
-from .components import predict_model
+from wildfire_pyro.wrappers.components import predict_model
+
 
 class SupervisedLearningManager(BaseLearningManager):
     def __init__(
         self,
-        neural_network: torch.nn.Module,
+        
         environment: BaseEnvironment,
         logging_parameters:Dict[str, Any],
         runtime_parameters:Dict[str, Any],
         model_parameters:Dict[str, Any],
+        neural_network: Optional[torch.nn.Module] = None,
     ):
         
         
-        super().__init__(environment, neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters,
+        super().__init__(environment, neural_network=neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters,
                          model_parameters=model_parameters)
 
 

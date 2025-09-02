@@ -5,7 +5,7 @@ import sys
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from wildfire_pyro.wrappers.components.replay_buffer import ReplayBuffer
+
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from gymnasium import spaces
 import numpy as np
@@ -14,8 +14,8 @@ import torch
 
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
-from wildfire_pyro.wrappers.components.target_provider import BaseTargetProvider, InfoFieldTargetProvider
-from .components.action_provider import BaseActionProvider
+from wildfire_pyro.wrappers.components import PredictionProvider, LabelProvider, ReplayBuffer, BaseOutputProvider
+
 
 if TYPE_CHECKING:
     from wildfire_pyro.common.callbacks import (
@@ -33,33 +33,7 @@ import inspect
 from wildfire_pyro.common.seed_manager import get_seed
 
 
-def recursive_getattr(obj, attr, *default):
-    """Helper to access nested attributes safely."""
-    attributes = attr.split(".")
-    for attribute in attributes:
-        obj = getattr(obj, attribute, *default)
-    return obj
 
-
-def save_to_zip_file(
-    path: Union[str, pathlib.Path, io.BufferedIOBase],
-    data: Dict[str, Any],
-    params: Dict[str, Any],
-    pytorch_variables: Optional[Dict[str, Any]] = None,
-) -> None:
-    """Helper function to save an object to a compressed zip file."""
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-        # Save non-PyTorch data
-        archive.writestr("data.pkl", pickle.dumps(data))
-
-        # Save PyTorch parameters
-        with archive.open("params.pth", "w") as f:
-            torch.save(params, f)
-
-        # Save additional PyTorch variables
-        if pytorch_variables is not None:
-            with archive.open("pytorch_variables.pth", "w") as f:
-                torch.save(pytorch_variables, f)
 
 #TODO:
 # target_extractor=lambda info: info["teacher_output"]["velocity"]
@@ -69,10 +43,10 @@ class BaseLearningManager:
     def __init__(
         self,
         environment: BaseEnvironment,
-        neural_network: torch.nn.Module,
         runtime_parameters: Dict[str, Any],
         logging_parameters: Dict[str, Any],
         model_parameters: Dict[str, Any],
+        neural_network: Optional[torch.nn.Module] = None,
     ):
         """
         Initializes the learning manager.
@@ -84,13 +58,13 @@ class BaseLearningManager:
         """
         
         # Target provider: default to InfoField
-        self.target_provider: BaseTargetProvider = InfoFieldTargetProvider(
-            "ground_truth")
-        self.action_provider: BaseActionProvider = BaseActionProvider(
-            provider=neural_network, device=runtime_parameters.get("device", "cpu"))
-        
+
+        if neural_network is not None:
+            self.set_neural_network(neural_network)
+
+
         self.environment = environment
-        self.neural_network = neural_network
+        
         # self.parameters = parameters
         self.device = runtime_parameters.get("device", "cpu")
         self.verbose = runtime_parameters.get("verbose", 1)
@@ -138,12 +112,34 @@ class BaseLearningManager:
         self.lr_fn = LearningRateSchedulerWrapper(
             model_parameters.get("lr", 1e-3))
 
+        
+
+        self.loss_func = torch.nn.MSELoss()
+
+    def set_neural_network(self, neural_network: torch.nn.Module):
+        """
+        Sets the neural network for the learning manager.
+
+        Args:
+            neural_network (torch.nn.Module): The neural network to be set.
+        """
+        self.neural_network = neural_network
+
         self.optimizer = torch.optim.Adam(
             self.neural_network.parameters(),
             lr=self.lr_fn(step=0, total_steps=1, loss=None),
         )
 
-        self.loss_func = torch.nn.MSELoss()
+        self.prediction_provider = PredictionProvider(
+            network=neural_network,
+            observation_space=self.environment.observation_space,
+            device=self.device
+        )
+
+        self.label_provider: BaseOutputProvider = LabelProvider()
+
+
+
 
     def _update_learning_rate(
         self,
@@ -250,18 +246,20 @@ class BaseLearningManager:
         obs, info = self.environment.reset(seed=self._generate_rollout_seed())
 
         for step in range(n_rollout_steps):
-            
-            action = self.action_provider.get_action(obs=obs)
-            target = self.target_provider.get_target(info=info)
 
-            if target is None:
-                print(f"[Warning] Missing 'target'. Ending rollout.")
+            #action_provider_obs = self.observation_provider_for_action.get_observation(obs, info)
+            #target_provider_obs = self.observation_provider_for_target.get_observation(obs, info)
+
+            label = self.label_provider.get_output(obs=obs, info=info)
+            prediction = self.prediction_provider.get_output(obs=obs, info=info)
+
+            if label is None:
+                print(f"[Warning] Missing 'label'. Ending rollout.")
                 break
 
-            self.buffer.add(obs, action, target)
+            self.buffer.add(obs, prediction, label)
 
-            # step provider ? observation provider ?
-            obs, reward, terminated, truncated, info = self.environment.step(action)
+            obs, reward, terminated, truncated, info = self.environment.step(prediction)
             self.num_timesteps += 1
 
             callback.update_locals(locals())
@@ -405,7 +403,7 @@ class BaseLearningManager:
         # Handle PyTorch parameters
         state_dicts_names, torch_variable_names = self._get_torch_save_params()
         pytorch_variables = {
-            name: recursive_getattr(self, name) for name in torch_variable_names
+            name: self.recursive_getattr(self, name) for name in torch_variable_names
         }
 
         # Remove excluded attributes
@@ -416,7 +414,7 @@ class BaseLearningManager:
         params_to_save = self.get_parameters()
 
         # Save everything to a zip file
-        save_to_zip_file(
+        self.save_to_zip_file(
             path, data=data, params=params_to_save, pytorch_variables=pytorch_variables
         )
 
@@ -476,6 +474,35 @@ class BaseLearningManager:
         such as adaptive learning rate schedulers.
         """
         self.evaluation_metrics = evaluation_metrics
+
+    def recursive_getattr(self, obj, attr, *default):
+        """Helper to access nested attributes safely."""
+        attributes = attr.split(".")
+        for attribute in attributes:
+            obj = getattr(obj, attribute, *default)
+        return obj
+
+
+    def save_to_zip_file(
+        self, 
+        path: Union[str, pathlib.Path, io.BufferedIOBase],
+        data: Dict[str, Any],
+        params: Dict[str, Any],
+        pytorch_variables: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Helper function to save an object to a compressed zip file."""
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+            # Save non-PyTorch data
+            archive.writestr("data.pkl", pickle.dumps(data))
+
+            # Save PyTorch parameters
+            with archive.open("params.pth", "w") as f:
+                torch.save(params, f)
+
+            # Save additional PyTorch variables
+            if pytorch_variables is not None:
+                with archive.open("pytorch_variables.pth", "w") as f:
+                    torch.save(pytorch_variables, f)
         
 
 
@@ -529,3 +556,5 @@ class LearningRateSchedulerWrapper:
             if name in sig.parameters and value is not None
         }
         return fn(**kwargs)
+    
+    
