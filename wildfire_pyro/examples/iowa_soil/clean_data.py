@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import argparse
 
 def merge_station_metadata(df_main: pd.DataFrame, df_meta: pd.DataFrame) -> pd.DataFrame:
     """
@@ -57,7 +58,40 @@ def save_to_excel(df: pd.DataFrame, file_path: str) -> None:
     print(f"✅ File successfully saved at: {file_path}")
 
 
-def load_clean_dataset(force_clean: bool = False) -> pd.DataFrame:
+def count_estimated_values(df: pd.DataFrame):
+    """
+    Count the number of estimated values ('E') across all flag columns in the DataFrame.
+
+    An estimated value is identified by the character 'E' in columns ending with the suffix '_f'.
+
+    Returns:
+        total_estimated (int): Total number of 'E' occurrences across all flag columns.
+        total_rows_with_E (int): Number of unique rows containing at least one 'E' in any flag column.
+        columns_with_E (dict): Dictionary mapping each '_f' column to the count of 'E' in that column.
+    """
+    total_estimated = 0
+    rows_with_E = set()
+    columns_with_E = {}
+
+    for col in df.columns:
+        if not col.endswith("_f"):
+            continue
+
+        col_series = df[col]
+        count_E = col_series.eq('E').sum()
+        total_estimated += count_E
+        columns_with_E[col] = count_E
+
+        # Track all row indices containing 'E'
+        rows_with_E.update(col_series[col_series == 'E'].index)
+
+    total_rows_with_E = len(rows_with_E)
+
+    return total_estimated, total_rows_with_E, columns_with_E
+
+
+
+def load_clean_dataset(force_clean: bool = False, save: bool = True) -> pd.DataFrame:
     """
     Load the cleaned dataset. If a cleaned file exists and force_clean is False,
     load it directly. Otherwise, process from raw files.
@@ -88,6 +122,18 @@ def load_clean_dataset(force_clean: bool = False) -> pd.DataFrame:
     df_weather = pd.read_excel("./data/ISU_Soil_Moisture_Network/isusm.xlsx")
     df_stations = pd.read_excel("./data/ISU_Soil_Moisture_Network/stations.xlsx")
 
+    total_estimated, total_rows_with_E, columns_with_E = count_estimated_values(
+        df_weather)
+
+
+    print("📌 Number of estimated values in the weather data:")
+    print(f"🔢 Total estimated values: {total_estimated}")
+    print(f"📄 Total rows with at least one 'E': {total_rows_with_E}")
+    print(f"📊 Columns with 'E' values:")
+
+    for col, count in columns_with_E.items():
+        if count > 0:
+            print(f"  - {col}: {count}")
     # UNITE
     df = merge_station_metadata(df_weather, df_stations)
 
@@ -107,7 +153,9 @@ def load_clean_dataset(force_clean: bool = False) -> pd.DataFrame:
     df = remove_missing_values(df)
 
     # SAVE DATAFRAME
-    save_to_excel(df, cleaned_file_path)
+    if save:
+        print("💾 Saving cleaned dataset to Excel file...")
+        save_to_excel(df, cleaned_file_path)
 
     return df
 
@@ -154,5 +202,16 @@ def show_clean_dataset_summary(df: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    df_final = load_clean_dataset(force_clean=False)
+    parser = argparse.ArgumentParser(
+        description="Clean and summarize ISU Soil Moisture dataset.")
+    parser.add_argument(
+        "-s",
+        "--save",
+        action="store_true",
+        help="Save the cleaned dataset to Excel file."
+    )
+    args = parser.parse_args()
+    
+    # Processa os dados
+    df_final = load_clean_dataset(force_clean=True, save=bool(args.save))
     show_clean_dataset_summary(df_final)

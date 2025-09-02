@@ -25,11 +25,13 @@ class DistillationLearningManager(SupervisedLearningManager):
     def __init__(
         self,
         student: torch.nn.Module,
+        teacher_nn: torch.nn.Module,
         environment: BaseEnvironment,
+        model_parameters: Dict[str, Any],
         logging_parameters: Dict[str, Any],
         runtime_parameters: Dict[str, Any],
-        model_parameters: Dict[str, Any],
-        teacher_nn: torch.nn.Module,
+        
+        
     ):
         super().__init__(
             neural_network=student,
@@ -41,7 +43,7 @@ class DistillationLearningManager(SupervisedLearningManager):
         
         self.target_provider = TeacherTargetProvider(
             teacher=teacher_nn,
-            input_shape=environment.teacher_observation_space,
+            observation_space=environment.teacher_observation_space,
             device=self.device,
         )
         
