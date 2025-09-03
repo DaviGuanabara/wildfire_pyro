@@ -1,14 +1,14 @@
+from gymnasium import spaces
 import torch
 import numpy as np
 from typing import Union, Tuple, Optional
-
 
 
 def predict_model(
     neural_network: torch.nn.Module,
     observation: np.ndarray,
     device: str,
-    input_shape: Optional[Union[Tuple[int, ...], int]] = None,
+    observation_space: Optional[spaces.Space] = None,
 ) -> Tuple[np.ndarray, dict]:
     """
     Performs forward pass with proper device handling and shape normalization.
@@ -32,33 +32,58 @@ def predict_model(
         - 'attention': attention weights (if available)
         - 'confidence': optional uncertainty scores
     """
+
     neural_network.eval()
+
     with torch.no_grad():
-        obs_tensor = torch.tensor(
-            observation, dtype=torch.float32, device=device)
+        obs_tensor = to_obs_tensor(observation, observation_space, device)
 
-        # Try to infer if it's a batch
-        if input_shape is None:
-            is_batch = len(obs_tensor.shape) > 1  # assume batch if 2D+
-        else:
-            # Normalize input_shape
-            if isinstance(input_shape, int):
-                input_shape = (input_shape,)
-            is_batch = len(obs_tensor.shape) == len(input_shape) + 1
+        # 🔹 Caso Dict → repassa direto pro modelo
+        if isinstance(obs_tensor, dict):
+            action_tensor = neural_network(obs_tensor)
+            if isinstance(action_tensor, tuple):
+                action_tensor = action_tensor[0]  # pega só as ações
+            action = action_tensor.cpu().numpy()
 
-        # Add batch dimension if not in batch format
-        if not is_batch:
-            # (1, num_neighbors, feature_dim)
-            obs_tensor = obs_tensor.unsqueeze(0)
+        else:  # 🔹 Caso Box → tensor único
+            action_tensor = neural_network(obs_tensor)
+            if isinstance(action_tensor, tuple):
+                action_tensor = action_tensor[0]
+            action = action_tensor.cpu().numpy()
 
-        # (batch_size, output_dim)
-        action_tensor = neural_network(obs_tensor)
-        action = action_tensor.cpu().numpy()
-
-        # If input was not in batch, remove the batch dimension from the output
-        if not is_batch:
-            # (output_dim,)
-            action = action.squeeze(0)
-
-        # Return action(s) and an empty dictionary for additional information
         return action, {}
+
+
+def to_obs_tensor(observation, observation_space, device):
+    """
+    Converte observação (dict ou array) em tensores com batch na frente.
+    Usa o observation_space para checar consistência.
+    """
+    if isinstance(observation_space, spaces.Dict):
+        out = {}
+        for k, sp in observation_space.spaces.items():
+            t = torch.as_tensor(
+                observation[k], dtype=torch.float32, device=device)
+            # Se t.ndim == len(sp.shape), falta batch
+            if t.ndim == len(sp.shape):
+                t = t.unsqueeze(0)
+            # Se já veio batched, ok. Se veio errado, acusa
+            elif t.ndim != len(sp.shape) + 1:
+                raise ValueError(
+                    f"Obs[{k}] com dims {t.shape}, esperado (B, {sp.shape}) ou {sp.shape}"
+                )
+            out[k] = t
+        return out
+
+    elif isinstance(observation_space, spaces.Box):
+        t = torch.as_tensor(observation, dtype=torch.float32, device=device)
+        if t.ndim == len(observation_space.shape):
+            t = t.unsqueeze(0)
+        return t
+
+    else:
+        # fallback genérico (ex: observation_space=None)
+        t = torch.as_tensor(observation, dtype=torch.float32, device=device)
+        if t.ndim == 1:
+            t = t.unsqueeze(0)
+        return t

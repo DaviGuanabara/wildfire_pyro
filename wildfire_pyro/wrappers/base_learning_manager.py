@@ -11,10 +11,11 @@ from gymnasium import spaces
 import numpy as np
 import torch
 
-
+from wildfire_pyro.wrappers.components.replay_buffer import DictReplayBuffer
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
 from wildfire_pyro.wrappers.components import PredictionProvider, LabelProvider, ReplayBuffer, BaseOutputProvider
+from wildfire_pyro.wrappers.components.observation_provider import BaseObservationProvider, LabelObservationProvider, PredictionObservationProvider
 
 
 if TYPE_CHECKING:
@@ -28,6 +29,8 @@ import zipfile
 import pickle
 import inspect
 
+import h5py
+import numpy as np
 
 
 from wildfire_pyro.common.seed_manager import get_seed
@@ -83,26 +86,55 @@ class BaseLearningManager:
         # Initialize the environment state
 
         init_seed = get_seed("BaseLearningManager/init")
-        self._last_obs, self._last_info = self.environment.reset(seed=init_seed)
+        #self._last_obs, self._last_info = self.environment.reset(seed=init_seed)
+
+
+        obs, info = self.environment.reset(
+            seed=init_seed) if "seed" in self.environment.reset.__code__.co_varnames else self.environment.reset()
+
+
 
         self.num_timesteps = 0
         self._total_timesteps = 0
         self.loss = np.inf
 
-        obs_shape = environment.observation_space.shape
-        assert obs_shape is not None, "observation_shape must not be None"
+        obs_space = environment.observation_space
 
-        # Experience replay buffer
-        self.buffer = ReplayBuffer(
-            max_size=self.batch_size,
-            observation_shape=obs_shape,
-            action_shape=(
-                environment.action_space.shape
-                if isinstance(environment.action_space, spaces.Box)
-                else (1,)
-            ),
-            device=self.device,
-        )
+
+        obs_shape = getattr(obs_space, "shape", None)  # pega shape se existir
+
+        # Atenção: Dict, Tuple etc. não têm shape fixo
+        if obs_shape is None and not isinstance(obs_space, spaces.Dict):
+            raise ValueError(f"Unsupported observation space: {type(obs_space)}")
+
+       
+
+
+        # Se o obs_space for Dict, use DictReplayBuffer
+        if isinstance(environment.observation_space, spaces.Dict):
+            self.buffer = DictReplayBuffer(
+                max_size=self.batch_size,
+                observation_space=environment.observation_space,
+                action_shape=(
+                    environment.action_space.shape
+                    if isinstance(environment.action_space, spaces.Box)
+                    else (1,)
+                ),
+                device=self.device,
+            )
+        else:
+            # Fallback: ReplayBuffer normal
+            self.buffer = ReplayBuffer(
+                max_size=self.batch_size,
+                observation_shape=environment.observation_space.shape,
+                action_shape=(
+                    environment.action_space.shape
+                    if isinstance(environment.action_space, spaces.Box)
+                    else (1,)
+                ),
+                device=self.device,
+            )
+
 
         self._custom_logger = False
         self.evaluation_metrics: Optional[Dict[str, Any]] = None
@@ -138,8 +170,8 @@ class BaseLearningManager:
 
         self.label_provider: BaseOutputProvider = LabelProvider()
 
-
-
+        self.prediction_obs_provider: BaseObservationProvider = PredictionObservationProvider()
+        self.label_obs_provider: BaseObservationProvider = LabelObservationProvider()
 
     def _update_learning_rate(
         self,
@@ -243,23 +275,33 @@ class BaseLearningManager:
         callback.on_rollout_start()
 
         # Ensure we start with a valid observation
-        obs, info = self.environment.reset(seed=self._generate_rollout_seed())
+        #obs, info = self.environment.reset(seed=self._generate_rollout_seed())
+
+        obs, info = self.environment.reset(
+            seed=self._generate_rollout_seed()) if "seed" in self.environment.reset.__code__.co_varnames else self.environment.reset()
+
 
         for step in range(n_rollout_steps):
 
-            #action_provider_obs = self.observation_provider_for_action.get_observation(obs, info)
-            #target_provider_obs = self.observation_provider_for_target.get_observation(obs, info)
-
-            label = self.label_provider.get_output(obs=obs, info=info)
-            prediction = self.prediction_provider.get_output(obs=obs, info=info)
+            prediction_obs = self.prediction_obs_provider.get_observation(obs, info)
+            prediction = self.prediction_provider.get_output(obs=prediction_obs)
+            
+            label_obs = self.label_obs_provider.get_observation(obs, info)
+            label = self.label_provider.get_output(obs=label_obs)
+            
 
             if label is None:
                 print(f"[Warning] Missing 'label'. Ending rollout.")
                 break
 
-            self.buffer.add(obs, prediction, label)
+            #print(f"[Info] Collected rollout step {step + 1}/{n_rollout_steps}.")
+            #print(prediction, label)
+            #print(prediction_obs)
+            self.buffer.add(prediction_obs, prediction[0], label[0])
+            self.save_to_hdf5("save_output", obs=prediction_obs,
+                              action=prediction[0], target=label[0])
 
-            obs, reward, terminated, truncated, info = self.environment.step(prediction)
+            obs, reward, terminated, truncated, info = self.environment.step(prediction[0])
             self.num_timesteps += 1
 
             callback.update_locals(locals())
@@ -296,9 +338,14 @@ class BaseLearningManager:
         if reset_num_timesteps:
             self.num_timesteps = 0
             self._episode_num = 0
-            self._last_obs, self._last_info = self.environment.reset(
-                seed=self._generate_rollout_seed()
-            )
+            #self._last_obs, self._last_info = self.environment.reset(
+            #    seed=self._generate_rollout_seed()
+            #)
+
+            obs, info = self.environment.reset(
+                seed=self._generate_rollout_seed()) if "seed" in self.environment.reset.__code__.co_varnames else self.environment.reset()
+
+
         else:
             total_timesteps += self.num_timesteps
 
@@ -417,6 +464,51 @@ class BaseLearningManager:
         self.save_to_zip_file(
             path, data=data, params=params_to_save, pytorch_variables=pytorch_variables
         )
+
+    import h5py
+
+
+    def save_to_hdf5(self, file_path, obs, action, target):
+        """
+        Salva um passo de rollout em HDF5 (append seguro).
+        
+        Args:
+            file_path (str): Caminho do arquivo HDF5.
+            obs (dict): Observação do ambiente.
+            action (np.ndarray): Ação escolhida (ex: shape [4]).
+            target (np.ndarray): Target/label (ex: shape [4]).
+        """
+        with h5py.File(file_path, "a") as f:
+            # Observações (dict de tensores)
+            for key, value in obs.items():
+                value = np.array(value, dtype=np.float32)
+                if key not in f:
+                    # primeira dim é variável (batch)
+                    maxshape = (None,) + value.shape
+                    f.create_dataset(
+                        key, data=value[None], maxshape=maxshape, chunks=True)
+                else:
+                    f[key].resize(f[key].shape[0] + 1, axis=0)
+                    f[key][-1] = value
+
+            # Ações
+            action = np.array(action, dtype=np.float32)
+            if "actions" not in f:
+                f.create_dataset("actions", data=action[None], maxshape=(
+                    None,) + action.shape, chunks=True)
+            else:
+                f["actions"].resize(f["actions"].shape[0] + 1, axis=0)
+                f["actions"][-1] = action
+
+            # Targets
+            target = np.array(target, dtype=np.float32)
+            if "targets" not in f:
+                f.create_dataset("targets", data=target[None], maxshape=(
+                    None,) + target.shape, chunks=True)
+            else:
+                f["targets"].resize(f["targets"].shape[0] + 1, axis=0)
+                f["targets"][-1] = target
+
 
     def _excluded_save_params(self) -> set:
         """

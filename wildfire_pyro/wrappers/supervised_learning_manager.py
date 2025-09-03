@@ -11,7 +11,6 @@ from wildfire_pyro.wrappers.components import predict_model
 class SupervisedLearningManager(BaseLearningManager):
     def __init__(
         self,
-        
         environment: BaseEnvironment,
         logging_parameters:Dict[str, Any],
         runtime_parameters:Dict[str, Any],
@@ -43,7 +42,7 @@ class SupervisedLearningManager(BaseLearningManager):
             self.neural_network,
             obs,
             self.device,
-            input_shape=self.environment.observation_space.shape,
+            observation_space=self.environment.observation_space,
         )
 
     
@@ -66,8 +65,15 @@ class SupervisedLearningManager(BaseLearningManager):
         observations, _, targets = self.buffer.sample_batch(
             self.batch_size)
 
+
         # (batch_size, num_neighbors, feature_dim)
-        observations = observations.to(self.device)
+        # observations = observations.to(self.device)
+        # (batch_size, num_neighbors, feature_dim)
+        if isinstance(observations, dict):
+            observations = {k: v.to(self.device) for k, v in observations.items()}
+        else:
+            observations = observations.to(self.device)
+
         # (batch_size, 1)
         targets = targets.to(self.device)
 
@@ -82,13 +88,16 @@ class SupervisedLearningManager(BaseLearningManager):
         # truth values during the training process.
         y_preds = self.neural_network(observations)
 
+        # Se for tupla, pega só o primeiro elemento
+        if isinstance(y_preds, tuple):
+            y_preds = y_preds[0]
+
         loss = self.loss_func(y_preds, targets)
         loss.backward()
         self.optimizer.step()
 
         self.loss: float = loss.item()
-        # print(f"[INFO] Train Loss: {average_loss:.4f}")
-
+        print(f"[INFO] Train Loss: {self.loss:.4f}")
 
         self._update_learning_rate()
 
