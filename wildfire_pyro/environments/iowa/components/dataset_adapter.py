@@ -168,7 +168,6 @@ class DatasetAdapter:
 
         return padded, mask
 
-
     def read(
         self,
         neighborhood_size: int,
@@ -176,9 +175,14 @@ class DatasetAdapter:
         max_delta_distance: float,
         max_delta_time: float,
         itself_as_neighbor: bool = False
-    ) -> Tuple[pd.Series, np.ndarray, np.ndarray]:
+    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str]]:
         """
         Sample ONE row with its neighborhood (padded).
+        Returns:
+            - sample: linha amostrada (pandas Series)
+            - padded: vizinhança com padding (np.ndarray)
+            - mask: máscara de válidos (np.ndarray)
+            - feature_names: lista com a ordem das colunas em padded
         """
         sample = self.data.sample(n=1).iloc[0]
         row_index = sample.name
@@ -199,9 +203,13 @@ class DatasetAdapter:
         )
 
         padded, mask = self.pad_neighbors(
-            formatted, max_neighborhood_size=max_neighborhood_size)
+            formatted, max_neighborhood_size=max_neighborhood_size
+        )
 
-        return sample, padded, mask
+        feature_names = list(formatted.columns)
+
+        return sample, padded, mask, feature_names
+
 
 
 if __name__ == "__main__":
@@ -222,7 +230,7 @@ if __name__ == "__main__":
     adapter = DatasetAdapter(data_path, metadata, verbose=True)
 
     # Lê uma amostra com vizinhança
-    sample, padded, mask = adapter.read(
+    sample, padded, mask, feature_names = adapter.read(
         neighborhood_size=random.randint(1, 5),
         max_neighborhood_size=5,
         max_delta_distance=1e9,
@@ -234,6 +242,7 @@ if __name__ == "__main__":
     print(sample)
 
     print("\n=== Padded neighbors ===")
+    print(feature_names)
     print(padded)
 
     print("\n=== Mask ===")
