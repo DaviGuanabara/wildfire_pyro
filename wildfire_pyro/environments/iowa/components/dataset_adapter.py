@@ -100,6 +100,65 @@ class DatasetAdapter:
         candidates = self.filter_by_distance(candidates, row, max_delta_distance)
 
         return candidates.sample(n=min(neighborhood_size, len(candidates)))
+    
+    def _compute_deltas(self, row: pd.Series, neighbors: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        time_col = self.metadata.time
+        pos_cols = self.metadata.position
+
+        # Δ tempo: vetor (num_neighbors,)
+        delta_time = neighbors[time_col].to_numpy() - row[time_col]
+
+        # Δ posição: matriz (num_neighbors, num_pos_cols)
+        ref_pos = row[pos_cols].to_numpy(dtype=float)
+        coords = neighbors[pos_cols].to_numpy(dtype=float)
+        delta_pos = coords - ref_pos  # dif por coordenada
+
+        return delta_time, delta_pos
+
+
+    def _add_deltas(
+        self,
+        formatted: pd.DataFrame,
+        row: pd.Series,
+        neighbors: pd.DataFrame,
+        max_delta_distance: float,
+        max_delta_time: float
+    ) -> pd.DataFrame:
+        delta_time, delta_pos = self._compute_deltas(row, neighbors)
+        delta_time = delta_time / max_delta_time
+        delta_pos = delta_pos / max_delta_distance
+
+        formatted["delta_time"] = delta_time
+        for i, col in enumerate(self.metadata.position):
+            formatted[f"delta_{col}"] = delta_pos[:, i]
+
+        return formatted
+
+
+    def _add_targets(
+        self,
+        formatted: pd.DataFrame,
+        neighbors: pd.DataFrame
+    ) -> pd.DataFrame:
+        for tgt in self.metadata.target:
+            if tgt in neighbors.columns:
+                formatted[f"target_{tgt}"] = neighbors[tgt].values
+        return formatted
+
+    def _add_features(self, formatted: pd.DataFrame, neighbors: pd.DataFrame) -> pd.DataFrame:
+        exclude_cols = {
+            self.metadata.id,
+            self.metadata.time,
+            *self.metadata.position,
+            *self.metadata.target,
+            *(self.metadata.exclude or []),  # 👈 inclui exclude aqui
+        }
+        feature_cols = [c for c in neighbors.columns if c not in exclude_cols]
+        for col in feature_cols:
+            formatted[f"feat_{col}"] = neighbors[col].values
+        return formatted
+
+
 
     def format_neighbors(
         self,
@@ -108,34 +167,17 @@ class DatasetAdapter:
         max_delta_distance: float,
         max_delta_time: float
     ) -> pd.DataFrame:
-        time_col = self.metadata.time
-        pos_cols = self.metadata.position
 
-        # --- metadados calculados ---
-        delta_time = (neighbors[time_col].values - row[time_col]) / max_delta_time
-        ref_pos = row[pos_cols].values.astype(float)
-        coords = neighbors[pos_cols].values.astype(float)
-        delta_distance = np.linalg.norm(
-            coords - ref_pos, axis=1) / max_delta_distance
+        formatted = pd.DataFrame(index=neighbors.index)
 
-        formatted = pd.DataFrame({
-            "delta_time": delta_time,
-            "delta_distance": delta_distance
-        }, index=neighbors.index)
-
-        # --- targets ---
-        for tgt in self.metadata.target:
-            if tgt in neighbors.columns:
-                formatted[tgt] = neighbors[tgt].values
-
-        # --- features adicionais ---
-        exclude_cols = {self.metadata.id, self.metadata.time,
-                        *self.metadata.position, *self.metadata.target}
-        feature_cols = [c for c in neighbors.columns if c not in exclude_cols]
-        for col in feature_cols:
-            formatted[col] = neighbors[col].values
+        formatted = self._add_deltas(formatted, row, neighbors, max_delta_distance, max_delta_time)
+        formatted = self._add_targets(formatted, neighbors)
+        formatted = self._add_features(formatted, neighbors)
 
         return formatted
+
+
+
 
 
     def pad_neighbors(
@@ -224,8 +266,14 @@ if __name__ == "__main__":
         position=["Latitude1", "Longitude1",
                   "Elevation [m]"],  # colunas espaciais
         id="ID",  # coluna de identificação
-        target=["high", "low"]  # colunas alvo
+        exclude=["lwmv_1", "lwmv_2", "lwmdry_1_tot", "lwmcon_1_tot", "lwmdry_2_tot", "lwmcon_2_tot"],  # colunas a excluir
+        target=["lwmwet_1_tot", "lwmwet_2_tot"]  # colunas alvo
     )
+
+
+
+
+    
 
     adapter = DatasetAdapter(data_path, metadata, verbose=True)
 
