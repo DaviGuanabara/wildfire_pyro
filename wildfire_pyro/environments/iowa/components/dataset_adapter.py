@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Hashable, List, Optional, Tuple, Any, cast
 import pandas as pd
@@ -19,7 +20,14 @@ class DatasetAdapter:
 
     def _load_data(self, data_path: str, metadata: Optional[Metadata]) -> pd.DataFrame:
         self.data_path = data_path
-        data = pd.read_excel(data_path)
+        ext = os.path.splitext(data_path)[1].lower()
+
+        if ext == ".csv":
+            data = pd.read_csv(data_path)
+        elif ext in [".xls", ".xlsx"]:
+            data = pd.read_excel(data_path)
+        else:
+            raise ValueError(f"Formato de arquivo não suportado: {ext}")
 
         if metadata is not None:
             self.metadata = metadata
@@ -30,10 +38,13 @@ class DatasetAdapter:
         self.data = self.sort_by_time(self.metadata, data)
         return self.data
 
+
     def load_data(self, data_path: str, metadata: Optional[Metadata] = None) -> pd.DataFrame:
         df = self._load_data(data_path, metadata)
         if self.verbose:
             logger.info(f"Data loaded successfully from {data_path}")
+            df.info()
+            logger.info(f"Metadata: {self.metadata}")
         return df
 
     def sort_by_time(self, metadata: Metadata, data: pd.DataFrame):
@@ -210,6 +221,11 @@ class DatasetAdapter:
 
         return padded, mask
 
+    def get_ground_truth(self, row: pd.Series) -> np.ndarray:
+        """Extrai o target (ground truth) do sample central."""
+        return row[self.metadata.target].to_numpy(dtype=float)
+
+
     def read(
         self,
         neighborhood_size: int,
@@ -217,7 +233,7 @@ class DatasetAdapter:
         max_delta_distance: float,
         max_delta_time: float,
         itself_as_neighbor: bool = False
-    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str]]:
+    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray]:
         """
         Sample ONE row with its neighborhood (padded).
         Returns:
@@ -250,7 +266,8 @@ class DatasetAdapter:
 
         feature_names = list(formatted.columns)
 
-        return sample, padded, mask, feature_names
+        ground_truth = self.get_ground_truth(sample)
+        return sample, padded, mask, feature_names, ground_truth
 
 
 
@@ -258,18 +275,19 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # ⚠️ Preencha com o caminho real do seu CSV
-    data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
+    #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
+    data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
 
+    
     # Exemplo de metadados
     metadata = Metadata(
-        time="data",  # coluna de tempo
-        position=["Latitude1", "Longitude1",
-                  "Elevation [m]"],  # colunas espaciais
-        id="ID",  # coluna de identificação
-        exclude=["lwmv_1", "lwmv_2", "lwmdry_1_tot", "lwmcon_1_tot", "lwmdry_2_tot", "lwmcon_2_tot"],  # colunas a excluir
-        target=["lwmwet_1_tot", "lwmwet_2_tot"]  # colunas alvo
+        time="valid",  # coluna de tempo
+        position=["Latitude1", "Longitude1", "Elevation [m]"],  # colunas espaciais
+        id="station",  # coluna de identificação
+        exclude=["out_lwmv_1", "out_lwmv_2", "out_lwmdry_1_tot", "out_lwmcon_1_tot", "out_lwmdry_2_tot", "out_lwmcon_2_tot", "out_lwmwet_2_tot",  # colunas a excluir
+                 "ID", "Archive Begins", "Archive Ends", "IEM Network", "Attributes", "Station Name"],
+        target=["out_lwmwet_1_tot"]#, "out_lwmwet_2_tot"]  # colunas alvo
     )
-
 
 
 
@@ -278,7 +296,7 @@ if __name__ == "__main__":
     adapter = DatasetAdapter(data_path, metadata, verbose=True)
 
     # Lê uma amostra com vizinhança
-    sample, padded, mask, feature_names = adapter.read(
+    sample, padded, mask, feature_names, ground_truth = adapter.read(
         neighborhood_size=random.randint(1, 5),
         max_neighborhood_size=5,
         max_delta_distance=1e9,
@@ -295,3 +313,6 @@ if __name__ == "__main__":
 
     print("\n=== Mask ===")
     print(mask)
+
+    print("\n=== Ground Truth ===")
+    print(ground_truth)
