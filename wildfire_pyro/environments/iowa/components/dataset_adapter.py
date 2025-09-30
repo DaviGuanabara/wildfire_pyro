@@ -10,13 +10,30 @@ from wildfire_pyro.environments.iowa.components.meta_data import Metadata
 logger = logging.getLogger("SensorManager")
 logger.setLevel(logging.INFO)
 
+from dataclasses import dataclass
+
+
+@dataclass
+class AdapterParams:
+    neighborhood_size: int
+    max_neighborhood_size: int
+    max_delta_distance: float
+    max_delta_time: float
+    verbose: bool = False
+
 
 class DatasetAdapter:
 
-    def __init__(self, data_path, metadata: Metadata, verbose: bool = False):
+    def __init__(self, data_path, metadata: Metadata, params: AdapterParams):
         self.data_path = data_path
-        self.verbose = verbose
+        self.params = params
         self.load_data(self.data_path, metadata)
+        self._set_shapes()
+
+    def _set_shapes(self):
+        self.neighbors_shape, self.mask_shape, self.ground_truth_shape = (
+            self._get_shapes()
+        )
 
     def _load_data(self, data_path: str, metadata: Optional[Metadata]) -> pd.DataFrame:
         self.data_path = data_path
@@ -38,10 +55,11 @@ class DatasetAdapter:
         self.data = self.sort_by_time(self.metadata, data)
         return self.data
 
-
-    def load_data(self, data_path: str, metadata: Optional[Metadata] = None) -> pd.DataFrame:
+    def load_data(
+        self, data_path: str, metadata: Optional[Metadata] = None
+    ) -> pd.DataFrame:
         df = self._load_data(data_path, metadata)
-        if self.verbose:
+        if self.params.verbose:
             logger.info(f"Data loaded successfully from {data_path}")
             df.info()
             logger.info(f"Metadata: {self.metadata}")
@@ -66,20 +84,22 @@ class DatasetAdapter:
             raise ValueError(f"Missing columns in dataframe: {missing}")
 
     # -------- Filters -------- #
-    def filter_by_id(self, candidates: pd.DataFrame, row, itself_as_neighbor: bool) -> pd.DataFrame:
+    def filter_by_id(self, candidates: pd.DataFrame, row) -> pd.DataFrame:
         id_col = self.metadata.id
-        if not itself_as_neighbor:
-            return candidates[candidates[id_col] != row[id_col]]
-        return candidates
+        return candidates[candidates[id_col] != row[id_col]]
 
-    def filter_by_time(self, candidates: pd.DataFrame, row, delta_time: Optional[float]) -> pd.DataFrame:
+    def filter_by_time(
+        self, candidates: pd.DataFrame, row, delta_time: Optional[float]
+    ) -> pd.DataFrame:
         if delta_time is None:
             return candidates
         time_col = self.metadata.time
         dt = np.abs(candidates[time_col] - row[time_col])
         return candidates[dt <= delta_time]
 
-    def filter_by_distance(self, candidates: pd.DataFrame, row, distance: Optional[float]) -> pd.DataFrame:
+    def filter_by_distance(
+        self, candidates: pd.DataFrame, row, distance: Optional[float]
+    ) -> pd.DataFrame:
         if distance is None:
             return candidates
         pos_cols = self.metadata.position
@@ -88,7 +108,9 @@ class DatasetAdapter:
         dists = np.linalg.norm(coords - ref, axis=1)
         return candidates[dists <= distance]
 
-    def filter_by_index(self, candidates: pd.DataFrame, row_index: Optional[int]) -> pd.DataFrame:
+    def filter_by_index(
+        self, candidates: pd.DataFrame, row_index: Optional[int]
+    ) -> pd.DataFrame:
         if row_index is None:
             return candidates
         return candidates.loc[candidates.index < row_index]
@@ -101,18 +123,19 @@ class DatasetAdapter:
         neighborhood_size: int,
         max_delta_distance: Optional[float] = None,
         max_delta_time: Optional[float] = None,
-        itself_as_neighbor: bool = False
     ) -> pd.DataFrame:
 
         candidates = self.data
         candidates = self.filter_by_index(candidates, row_index)
-        candidates = self.filter_by_id(candidates, row, itself_as_neighbor)
+        candidates = self.filter_by_id(candidates, row)
         candidates = self.filter_by_time(candidates, row, max_delta_time)
         candidates = self.filter_by_distance(candidates, row, max_delta_distance)
 
         return candidates.sample(n=min(neighborhood_size, len(candidates)))
-    
-    def _compute_deltas(self, row: pd.Series, neighbors: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+
+    def _compute_deltas(
+        self, row: pd.Series, neighbors: pd.DataFrame
+    ) -> Tuple[np.ndarray, np.ndarray]:
         time_col = self.metadata.time
         pos_cols = self.metadata.position
 
@@ -126,14 +149,13 @@ class DatasetAdapter:
 
         return delta_time, delta_pos
 
-
     def _add_deltas(
         self,
         formatted: pd.DataFrame,
         row: pd.Series,
         neighbors: pd.DataFrame,
         max_delta_distance: float,
-        max_delta_time: float
+        max_delta_time: float,
     ) -> pd.DataFrame:
         delta_time, delta_pos = self._compute_deltas(row, neighbors)
         delta_time = delta_time / max_delta_time
@@ -145,18 +167,17 @@ class DatasetAdapter:
 
         return formatted
 
-
     def _add_targets(
-        self,
-        formatted: pd.DataFrame,
-        neighbors: pd.DataFrame
+        self, formatted: pd.DataFrame, neighbors: pd.DataFrame
     ) -> pd.DataFrame:
         for tgt in self.metadata.target:
             if tgt in neighbors.columns:
                 formatted[f"target_{tgt}"] = neighbors[tgt].values
         return formatted
 
-    def _add_features(self, formatted: pd.DataFrame, neighbors: pd.DataFrame) -> pd.DataFrame:
+    def _add_features(
+        self, formatted: pd.DataFrame, neighbors: pd.DataFrame
+    ) -> pd.DataFrame:
         exclude_cols = {
             self.metadata.id,
             self.metadata.time,
@@ -169,49 +190,50 @@ class DatasetAdapter:
             formatted[f"feat_{col}"] = neighbors[col].values
         return formatted
 
-
+    def _get_shapes(self) -> Tuple[Tuple[int, int], Tuple[int], Tuple[int]]:
+        """
+        Retorna os shapes de (padded, mask, ground_truth).
+        Útil para definir observation_space no Gymnasium.
+        """
+        _, padded, mask, _, ground_truth = self.read()
+        return padded.shape, mask.shape, ground_truth.shape
 
     def format_neighbors(
         self,
         row: pd.Series,
         neighbors: pd.DataFrame,
         max_delta_distance: float,
-        max_delta_time: float
+        max_delta_time: float,
     ) -> pd.DataFrame:
 
         formatted = pd.DataFrame(index=neighbors.index)
 
-        formatted = self._add_deltas(formatted, row, neighbors, max_delta_distance, max_delta_time)
+        formatted = self._add_deltas(
+            formatted, row, neighbors, max_delta_distance, max_delta_time
+        )
         formatted = self._add_targets(formatted, neighbors)
         formatted = self._add_features(formatted, neighbors)
 
         return formatted
-
-
-
-
 
     def pad_neighbors(
         self,
         neighbors: pd.DataFrame,
         max_neighborhood_size: int,
         shuffle: bool = True,
-        invalid_value: float = 0.0
+        invalid_value: float = 0.0,
     ) -> Tuple[np.ndarray, np.ndarray]:
         k, F = neighbors.shape
         M = max_neighborhood_size
 
-
         padded = np.full((M, F), invalid_value, dtype=float)
         mask = np.zeros((M,), dtype=np.bool_)
-
 
         use_k = min(k, M)
         if use_k > 0:
             arr = neighbors.values.astype(float)
             padded[:use_k, :] = arr[:use_k]
             mask[:use_k] = True
-
 
         if shuffle and M > 1:
             idx = np.arange(M)
@@ -225,22 +247,9 @@ class DatasetAdapter:
         """Extrai o target (ground truth) do sample central."""
         return row[self.metadata.target].to_numpy(dtype=float)
 
-
-    def read(
-        self,
-        neighborhood_size: int,
-        max_neighborhood_size: int,
-        max_delta_distance: float,
-        max_delta_time: float,
-        itself_as_neighbor: bool = False
-    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray]:
+    def read(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray]:
         """
         Sample ONE row with its neighborhood (padded).
-        Returns:
-            - sample: linha amostrada (pandas Series)
-            - padded: vizinhança com padding (np.ndarray)
-            - mask: máscara de válidos (np.ndarray)
-            - feature_names: lista com a ordem das colunas em padded
         """
         sample = self.data.sample(n=1).iloc[0]
         row_index = sample.name
@@ -248,61 +257,70 @@ class DatasetAdapter:
         neighbors = self.get_neighbors(
             row_index=cast(int, row_index),
             row=sample,
-            neighborhood_size=neighborhood_size,
-            max_delta_distance=max_delta_distance,
-            max_delta_time=max_delta_time,
-            itself_as_neighbor=itself_as_neighbor
+            neighborhood_size=self.params.neighborhood_size,
+            max_delta_distance=self.params.max_delta_distance,
+            max_delta_time=self.params.max_delta_time,
         )
 
         formatted = self.format_neighbors(
-            sample, neighbors,
-            max_delta_distance=max_delta_distance,
-            max_delta_time=max_delta_time
+            sample,
+            neighbors,
+            max_delta_distance=self.params.max_delta_distance,
+            max_delta_time=self.params.max_delta_time,
         )
 
         padded, mask = self.pad_neighbors(
-            formatted, max_neighborhood_size=max_neighborhood_size
+            formatted, max_neighborhood_size=self.params.max_neighborhood_size
         )
 
         feature_names = list(formatted.columns)
-
         ground_truth = self.get_ground_truth(sample)
-        return sample, padded, mask, feature_names, ground_truth
 
+        return sample, padded, mask, feature_names, ground_truth
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # ⚠️ Preencha com o caminho real do seu CSV
-    #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
+    # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
     data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
 
-    
     # Exemplo de metadados
     metadata = Metadata(
         time="valid",  # coluna de tempo
         position=["Latitude1", "Longitude1", "Elevation [m]"],  # colunas espaciais
         id="station",  # coluna de identificação
-        exclude=["out_lwmv_1", "out_lwmv_2", "out_lwmdry_1_tot", "out_lwmcon_1_tot", "out_lwmdry_2_tot", "out_lwmcon_2_tot", "out_lwmwet_2_tot",  # colunas a excluir
-                 "ID", "Archive Begins", "Archive Ends", "IEM Network", "Attributes", "Station Name"],
-        target=["out_lwmwet_1_tot"]#, "out_lwmwet_2_tot"]  # colunas alvo
+        exclude=[
+            "out_lwmv_1",
+            "out_lwmv_2",
+            "out_lwmdry_1_tot",
+            "out_lwmcon_1_tot",
+            "out_lwmdry_2_tot",
+            "out_lwmcon_2_tot",
+            "out_lwmwet_2_tot",  # colunas a excluir
+            "ID",
+            "Archive Begins",
+            "Archive Ends",
+            "IEM Network",
+            "Attributes",
+            "Station Name",
+        ],
+        target=["out_lwmwet_1_tot"],  # , "out_lwmwet_2_tot"]  # colunas alvo
     )
 
-
-
-    
-
-    adapter = DatasetAdapter(data_path, metadata, verbose=True)
-
-    # Lê uma amostra com vizinhança
-    sample, padded, mask, feature_names, ground_truth = adapter.read(
-        neighborhood_size=random.randint(1, 5),
-        max_neighborhood_size=5,
+    params = AdapterParams(
+        neighborhood_size=5,
+        max_neighborhood_size=10,
         max_delta_distance=1e9,
         max_delta_time=10.0,
-        itself_as_neighbor=False
+        verbose=True,
     )
+
+    adapter = DatasetAdapter(data_path, metadata, params=params)
+
+    # Lê uma amostra com vizinhança
+    sample, padded, mask, feature_names, ground_truth = adapter.read()
 
     print("\n=== Sample (row) ===")
     print(sample)
