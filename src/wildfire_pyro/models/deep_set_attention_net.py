@@ -1,4 +1,6 @@
+from typing import Dict
 from torch import Tensor, nn
+import torch
 
 
 class MLPBlock(nn.Module):
@@ -381,33 +383,33 @@ class DeepSetAttentionNet(nn.Module):
 
     # TODO: I have to find a better way to abstract "observation" to extract
     # "mask" and "u" of it.
-    def forward(self, observation):
+    def forward(self, observation: Dict[str, torch.Tensor]):
         """
         Forward pass of the DeepSetAttentionNet.
 
         Args:
-            u (torch.Tensor): Input tensor of shape (batch_size, num_neighbors, input_dim).
-            mask (torch.Tensor): Mask tensor of shape (batch_size, num_neighbors).
-
-        Returns:
-            torch.Tensor: Output tensor of shape (batch_size, output_dim).
+            observation (dict): {
+                "neighbors": Tensor of shape (batch_size, num_neighbors, input_dim),
+                "mask": Tensor of shape (batch_size, num_neighbors)
+            }
         """
-
-        # (batch_size, num_neighbors, input_dim)
-        u = observation[:, :, : self.input_dim]
-
-        # (batch_size, num_neighbors)
-        mask = observation[:, :, -1]
+        u = observation["neighbors"]   # (B, N, F)
+        mask = observation["mask"]     # (B, N)
 
         batch_size, num_neighbors, _ = u.shape
 
-        output_mlp_phi = self.mlp_phi.forward(u)
+        # Passa pelas três partes do Deep Set Attention
+        output_mlp_phi = self.mlp_phi(u)
+        output_mlp_omega = self.mlp_omega(u, mask)
 
-        output_mlp_omega = self.mlp_omega.forward(u, mask)
-
+        # Aplica pesos de atenção
         weighted_features = output_mlp_phi * output_mlp_omega
+
+        # Agrega sobre vizinhos
         aggregated_features = weighted_features.sum(dim=1).view(batch_size, -1)
 
-        output_mlp_theta = self.mlp_theta.forward(aggregated_features, num_neighbors)
+        # Regressão final
+        output_mlp_theta = self.mlp_theta(aggregated_features, num_neighbors)
 
         return output_mlp_theta
+

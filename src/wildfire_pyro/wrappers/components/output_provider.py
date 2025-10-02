@@ -14,7 +14,7 @@ class BaseOutputProvider(ABC):
     """
 
     @abstractmethod
-    def get_output(self, obs: Optional[np.ndarray] = None, info: Optional[Dict[str, Any]] = None) -> np.ndarray:
+    def get_output(self, obs: np.ndarray) -> np.ndarray:
         pass
 
 
@@ -27,12 +27,8 @@ class LabelProvider(BaseOutputProvider):
         super().__init__()
         self.info_key = info_key
 
-    def get_output(self, obs: Optional[np.ndarray] = None, info: Optional[Dict[str, Any]] = None) -> np.ndarray:
-        if info is None:
-            raise ValueError("LabelProvider requires 'info' dictionary.")
-        elif self.info_key not in info:
-            raise ValueError(f"LabelProvider requires '{self.info_key}' key in 'info' dictionary.")
-        return info[self.info_key]
+    def get_output(self, obs: np.ndarray ) -> np.ndarray:
+        return obs
 
 
 class PredictionProvider(BaseOutputProvider):
@@ -45,14 +41,12 @@ class PredictionProvider(BaseOutputProvider):
         self.observation_space = observation_space
         self.device = device
 
-    def get_output(self, obs: Optional[np.ndarray] = None, info: Optional[Dict[str, Any]] = None) -> np.ndarray:
+    def get_output(self, obs: np.ndarray) -> np.ndarray:
         """
         Returns:
         Tuple[np.ndarray, dict]: 
             - Model prediction(s), shape depends on input format.
             - Info dictionary (currently empty, but expandable).
-
-        
         """
         if obs is None:
             raise ValueError("PredictionProvider requires an observation.")
@@ -60,7 +54,7 @@ class PredictionProvider(BaseOutputProvider):
             self.network,
             obs,
             device=self.device,
-            input_shape=self.observation_space.shape,
+            observation_space=self.observation_space,
         )
         return prediction
 
@@ -76,19 +70,14 @@ class TeacherPredictionProvider(PredictionProvider):
         super().__init__(network, observation_space, device)
    
 
-    def get_output(self, obs: Optional[np.ndarray] = None, info: Optional[Dict[str, Any]] = None) -> np.ndarray:
+    def get_output(self, obs: np.ndarray) -> np.ndarray:
         """
         Uses student observations to get model predictions.
         Collects observation from info[student_observation].
         Returns:
             torch.Tensor: Model prediction(s), shape depends on input format.
         """
-        if info is not None:
-            observation = info.get("teacher_observation", None)
-        if observation is None:
-            raise ValueError("'teacher_observation' not found in info.")
-        return super().get_output(observation)
-    
+        return super().get_output(obs)
 
 class StudentPredictionProvider(PredictionProvider):
     """
@@ -97,15 +86,12 @@ class StudentPredictionProvider(PredictionProvider):
     def __init__(self, network: torch.nn.Module, observation_space: spaces.Space, device: str = "cpu"):
         super().__init__(network, observation_space, device)
 
-    def get_output(self, obs: Optional[np.ndarray] = None, info: Optional[Dict[str, Any]] = None) -> np.ndarray:
+    def get_output(self, obs: np.ndarray) -> np.ndarray:
         """
         Uses student observations to get model predictions.
         Collects observation from info[student_observation].
         Returns:
             torch.Tensor: Model prediction(s), shape depends on input format.
         """
-        if info is not None:
-            observation = info.get("student_observation", None)
-        if observation is None:
-            raise ValueError("'student_observation' not found in info.")
-        return super().get_output(observation)
+        return super().get_output(obs)
+

@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "wildfire"
+name = "wildfire_pyro"
 version = "0.1.0"
 description = ""
 authors = ["DaviGuanabara <davi_guanabara@live.com>"]
@@ -10,7 +10,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.11,<3.14"
 torch = "^2.5.0"
 matplotlib = "^3.9.2"
 pandas = "^2.2.3"
@@ -23,6 +23,7 @@ torchvision = "^0.21.0"
 torchaudio = "^2.6.0"
 tensorboard = "^2.19.0"
 openpyxl = "^3.1.5"
+h5py = "^3.14.0"
 
 [build-system]
 requires = ["poetry-core"]
