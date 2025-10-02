@@ -51,7 +51,9 @@ class BaseEnvironment(Env, ABC):
             Tuple[Any, Dict[str, Any]]: Initial observation and info (empty by default).
         """
         self.seed = seed
-        return None, {}  # Pode ser ajustado para retornar um placeholder padrão
+        self.rng = np.random.default_rng(seed)
+
+        return None, {}  # placeholder, subclasses devem sobrescrever
 
 
     @abstractmethod
@@ -66,7 +68,7 @@ class BaseEnvironment(Env, ABC):
             Tuple[Any, float, bool, bool, Dict[str, Any]]:
                 - observation (Any): Agent's observation of the current environment.
                 - reward (float): Amount of reward returned after previous action.
-                - done (bool): Whether the episode has ended.
+                - terminated (bool): Whether the episode has ended.
                 - truncated (bool): Whether the episode was truncated.
                 - info (Dict[str, Any]): Diagnostic information.
         """
