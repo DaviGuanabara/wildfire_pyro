@@ -11,7 +11,6 @@ from gymnasium import spaces
 import numpy as np
 import torch
 
-from wildfire_pyro.wrappers.components.replay_buffer import DictReplayBuffer
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
 from wildfire_pyro.wrappers.components import PredictionProvider, LabelProvider, ReplayBuffer, BaseOutputProvider
@@ -56,97 +55,89 @@ class BaseLearningManager:
 
         Args:
             environment (BaseEnvironment): Gymnasium environment instance.
-            neural_network (torch.nn.Module): Neural network to be trained.
-            parameters (Dict[str, Any]): Dictionary with training parameters.
+            runtime_parameters (dict): Runtime configurations (device, seed, verbosity).
+            logging_parameters (dict): Logging configurations (path, format).
+            model_parameters (dict): Model and training hyperparameters.
+            neural_network (torch.nn.Module, optional): Neural network to be trained.
         """
-        
-        # Target provider: default to InfoField
-
-        if neural_network is not None:
-            self.set_neural_network(neural_network)
-
 
         self.environment = environment
-        
-        # self.parameters = parameters
-        self.device = runtime_parameters.get("device", "cpu")
-        self.verbose = runtime_parameters.get("verbose", 1)
-        self.seed = runtime_parameters.get("seed", 42)
+        self.device, self.verbose, self.seed = self._init_runtime(
+            runtime_parameters)
+        self.log_path, self.format_strings = self._init_logging(
+            logging_parameters)
+        self.batch_size, self.rollout_size, self.lr = self._init_model_params(
+            model_parameters)
 
-        # self.tensorboard_log = parameters.get("tensorboard_log", None)
+        # estado inicial do ambiente
+        obs, info = self._reset_environment()
 
-        self.log_path = logging_parameters.get("log_path")
-        self.format_strings = logging_parameters.get("format_strings")
-        # self.tensorboard_log = self.log_path
+        # inicialização do buffer de replay
+        self.buffer = self._init_replay_buffer(environment)
 
-        self.batch_size = model_parameters.get("batch_size", 64)
-        self.rollout_size = model_parameters.get("rollout_size", self.batch_size)
-        self.lr = model_parameters.get("lr", 1e-3)
-
-        # Initialize the environment state
-
-        init_seed = get_seed("BaseLearningManager/init")
-        #self._last_obs, self._last_info = self.environment.reset(seed=init_seed)
-
-
-        obs, info = self.environment.reset(
-            seed=init_seed) if "seed" in self.environment.reset.__code__.co_varnames else self.environment.reset()
-
-
-
+        # inicialização de atributos básicos
+        self._custom_logger = False
+        self.evaluation_metrics: Optional[Dict[str, Any]] = None
         self.num_timesteps = 0
         self._total_timesteps = 0
         self.loss = np.inf
 
+        # scheduler e função de loss
+        self.lr_fn = LearningRateSchedulerWrapper(self.lr)
+        self.loss_func = torch.nn.MSELoss()
+
+        # neural network (injeção tardia possível)
+        if neural_network is not None:
+            self.set_neural_network(neural_network)
+
+    # -------------------------------
+    # Métodos auxiliares
+    # -------------------------------
+
+    def _init_runtime(self, runtime_parameters: Dict[str, Any]):
+        device = runtime_parameters.get("device", "cpu")
+        verbose = runtime_parameters.get("verbose", 1)
+        seed = runtime_parameters.get("seed", 42)
+        return device, verbose, seed
+
+    def _init_logging(self, logging_parameters: Dict[str, Any]):
+        log_path = logging_parameters.get("log_path")
+        format_strings = logging_parameters.get("format_strings")
+        return log_path, format_strings
+
+    def _init_model_params(self, model_parameters: Dict[str, Any]):
+        batch_size = model_parameters.get("batch_size", 64)
+        rollout_size = model_parameters.get("rollout_size", batch_size)
+        lr = model_parameters.get("lr", 1e-3)
+        return batch_size, rollout_size, lr
+
+    def _reset_environment(self):
+        init_seed = get_seed("BaseLearningManager/init")
+        if "seed" in self.environment.reset.__code__.co_varnames:
+            return self.environment.reset(seed=init_seed)
+        return self.environment.reset()
+
+    def _init_replay_buffer(self, environment: BaseEnvironment):
         obs_space = environment.observation_space
 
-
-        obs_shape = getattr(obs_space, "shape", None)  # pega shape se existir
-
-        # Atenção: Dict, Tuple etc. não têm shape fixo
-        if obs_shape is None and not isinstance(obs_space, spaces.Dict):
+        # Para o genérico, só checamos se é suportado
+        if not (isinstance(obs_space, spaces.Box) or isinstance(obs_space, spaces.Dict)):
             raise ValueError(f"Unsupported observation space: {type(obs_space)}")
 
-       
-
-
-        # Se o obs_space for Dict, use DictReplayBuffer
-        if isinstance(environment.observation_space, spaces.Dict):
-            self.buffer = DictReplayBuffer(
-                max_size=self.batch_size,
-                observation_space=environment.observation_space,
-                action_shape=(
-                    environment.action_space.shape
-                    if isinstance(environment.action_space, spaces.Box)
-                    else (1,)
-                ),
-                device=self.device,
-            )
-        else:
-            # Fallback: ReplayBuffer normal
-            self.buffer = ReplayBuffer(
-                max_size=self.batch_size,
-                observation_shape=environment.observation_space.shape,
-                action_shape=(
-                    environment.action_space.shape
-                    if isinstance(environment.action_space, spaces.Box)
-                    else (1,)
-                ),
-                device=self.device,
-            )
-
-
-        self._custom_logger = False
-        self.evaluation_metrics: Optional[Dict[str, Any]] = None
-
-
-        
-        self.lr_fn = LearningRateSchedulerWrapper(
-            model_parameters.get("lr", 1e-3))
+        return ReplayBuffer(
+            max_size=self.batch_size,
+            device=self.device,
+        )
 
         
 
-        self.loss_func = torch.nn.MSELoss()
+
+
+    def _get_action_shape(self, environment: BaseEnvironment):
+        if isinstance(environment.action_space, spaces.Box):
+            return environment.action_space.shape
+        return (1,)
+
 
     def set_neural_network(self, neural_network: torch.nn.Module):
         """
@@ -488,8 +479,8 @@ class BaseLearningManager:
                     f.create_dataset(
                         key, data=value[None], maxshape=maxshape, chunks=True)
                 else:
-                    f[key].resize(f[key].shape[0] + 1, axis=0)
-                    f[key][-1] = value
+                    f[key].resize(f[key].shape[0] + 1, axis=0) #type: ignore
+                    f[key][-1] = value  # type: ignore
 
             # Ações
             action = np.array(action, dtype=np.float32)
@@ -497,8 +488,8 @@ class BaseLearningManager:
                 f.create_dataset("actions", data=action[None], maxshape=(
                     None,) + action.shape, chunks=True)
             else:
-                f["actions"].resize(f["actions"].shape[0] + 1, axis=0)
-                f["actions"][-1] = action
+                f["actions"].resize(f["actions"].shape[0] + 1, axis=0) #type: ignore
+                f["actions"][-1] = action  # type: ignore
 
             # Targets
             target = np.array(target, dtype=np.float32)
@@ -506,8 +497,8 @@ class BaseLearningManager:
                 f.create_dataset("targets", data=target[None], maxshape=(
                     None,) + target.shape, chunks=True)
             else:
-                f["targets"].resize(f["targets"].shape[0] + 1, axis=0)
-                f["targets"][-1] = target
+                f["targets"].resize(f["targets"].shape[0] + 1, axis=0) #type: ignore
+                f["targets"][-1] = target  # type: ignore
 
 
     def _excluded_save_params(self) -> set:

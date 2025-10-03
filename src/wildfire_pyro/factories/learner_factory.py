@@ -30,9 +30,11 @@ def create_deep_set_learner(
 
     # Cria modelo (rede neural decide input_dim internamente a partir do Dict)
     neural_network = DeepSetAttentionNet(
-        output_dim=output_dim,
-        hidden=model_parameters.get("hidden", 64),
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        hidden_dim=model_parameters.get("hidden", 64),
         prob=model_parameters.get("dropout_prob", 0.2),
+
     ).to(runtime_parameters.get("device", "cpu"))
 
     learner = SupervisedLearningManager(

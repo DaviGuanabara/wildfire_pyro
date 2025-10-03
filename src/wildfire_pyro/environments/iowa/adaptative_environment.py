@@ -92,7 +92,7 @@ class AdaptativeEnvironment(BaseEnvironment):
 
     def get_bootstrap_observations(
         self, n_bootstrap: int, force_recompute: bool = True
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[list[dict[str, np.ndarray]], np.ndarray]:
         """
         Return a batch of bootstrap observations and their ground truth values.
 
@@ -101,8 +101,8 @@ class AdaptativeEnvironment(BaseEnvironment):
             force_recompute (bool): if True, restart dataset cursor from beginning.
 
         Returns:
-            tuple[np.ndarray, np.ndarray]:
-                - observations: array (n_bootstrap, M, F) with padded neighbors
+            tuple:
+                - observations: list of dicts with keys matching observation_space
                 - ground_truths: array (n_bootstrap, T) with targets
         """
         if force_recompute:
@@ -114,14 +114,17 @@ class AdaptativeEnvironment(BaseEnvironment):
         for _ in range(n_bootstrap):
             sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.next()
 
-            # Só coleta o padded (features) e o ground_truth
-            obs_list.append(padded.astype(np.float32))
+            # 🔹 Cada observação vira um dict compatível com observation_space
+            obs_dict = {
+                "neighbors": padded.astype(np.float32),
+                "mask": mask.astype(np.float32),
+            }
+            obs_list.append(obs_dict)
             gt_list.append(ground_truth.astype(np.float32))
 
             if terminated:
                 break  # dataset acabou
 
-        observations = np.stack(obs_list, axis=0)
         ground_truths = np.stack(gt_list, axis=0)
 
-        return observations, ground_truths
+        return obs_list, ground_truths

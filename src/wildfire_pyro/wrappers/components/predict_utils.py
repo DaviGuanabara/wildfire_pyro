@@ -56,25 +56,45 @@ def predict_model(
 
 def to_obs_tensor(observation, observation_space, device):
     """
-    Converte observação (dict ou array) em tensores com batch na frente.
-    Usa o observation_space para checar consistência.
+    Converte observação (dict, lista de dicts ou array) em tensores com batch.
+    Usa o observation_space para verificar consistência dinamicamente.
     """
-    if isinstance(observation_space, spaces.Dict):
-        out = {}
-        for k, sp in observation_space.spaces.items():
-            t = torch.as_tensor(
-                observation[k], dtype=torch.float32, device=device)
-            # Se t.ndim == len(sp.shape), falta batch
-            if t.ndim == len(sp.shape):
-                t = t.unsqueeze(0)
-            # Se já veio batched, ok. Se veio errado, acusa
-            elif t.ndim != len(sp.shape) + 1:
-                raise ValueError(
-                    f"Obs[{k}] com dims {t.shape}, esperado (B, {sp.shape}) ou {sp.shape}"
-                )
-            out[k] = t
-        return out
 
+    #print("observation type:", type(observation))
+    #print("observation:", observation)
+    #print("observation_space type:", type(observation_space))
+    #print("observation_space:", observation_space)
+    # Caso Dict space
+    if isinstance(observation_space, spaces.Dict):
+
+        # 🔹 Se receber lista de dicionários → empilhar por chave
+        if isinstance(observation, list) and isinstance(observation[0], dict):
+            out = {}
+            for k, sp in observation_space.spaces.items():
+                stacked = torch.as_tensor(
+                    np.stack([obs[k] for obs in observation], axis=0),
+                    dtype=torch.float32,
+                    device=device,
+                )
+                out[k] = stacked
+            return out
+
+        # 🔹 Se receber dict único
+        elif isinstance(observation, dict):
+            out = {}
+            for k, sp in observation_space.spaces.items():
+                t = torch.as_tensor(
+                    observation[k], dtype=torch.float32, device=device)
+                if t.ndim == len(sp.shape):
+                    t = t.unsqueeze(0)  # adiciona batch
+                out[k] = t
+            return out
+
+        else:
+            raise ValueError(
+                f"Esperado dict ou lista de dicts, mas recebi {type(observation)}")
+
+    # Caso Box space
     elif isinstance(observation_space, spaces.Box):
         t = torch.as_tensor(observation, dtype=torch.float32, device=device)
         if t.ndim == len(observation_space.shape):
@@ -82,7 +102,7 @@ def to_obs_tensor(observation, observation_space, device):
         return t
 
     else:
-        # fallback genérico (ex: observation_space=None)
+        # fallback genérico
         t = torch.as_tensor(observation, dtype=torch.float32, device=device)
         if t.ndim == 1:
             t = t.unsqueeze(0)

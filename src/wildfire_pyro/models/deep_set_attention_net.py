@@ -1,4 +1,7 @@
-from typing import Dict
+import numpy as np
+from torch import nn
+import gymnasium as gym
+from typing import Dict, cast
 from torch import Tensor, nn
 import torch
 
@@ -74,7 +77,7 @@ class MLPphi(nn.Module):
         phi_block_3 (MLPBlock): Third MLP block.
     """
 
-    def __init__(self, hidden, features, prob):
+    def __init__(self, features, hidden, prob):
         super(MLPphi, self).__init__()
         self.features = features
         self.hidden = hidden
@@ -150,7 +153,7 @@ class MLPomega(nn.Module):
         output_function (nn.Softmax): Softmax function for weight normalization.
     """
 
-    def __init__(self, hidden, features, prob):
+    def __init__(self, features, hidden, prob):
         super(MLPomega, self).__init__()
         self.features = features
         self.hidden = hidden
@@ -256,10 +259,11 @@ class MLPtheta(nn.Module):
         theta_block_4 (MLPBlock): Fourth MLP block for dimensionality reduction to a single output.
     """
 
-    def __init__(self, hidden, features, prob):
+    def __init__(self, features, hidden, output, prob):
         super(MLPtheta, self).__init__()
         self.features = features
         self.hidden = hidden
+        self.output = output
 
         self.theta_block_1 = MLPBlock(
             in_features=features,
@@ -285,7 +289,7 @@ class MLPtheta(nn.Module):
 
         self.theta_block_4 = MLPBlock(
             in_features=hidden,
-            out_features=1,  # Reduces to a single output
+            out_features=output,
             activation_function=None,
             use_dropout=False,
         )
@@ -336,10 +340,10 @@ class DeepSetAttentionNet(nn.Module):
     aggregation across neighbors.
 
     Args:
-        input_dim (int): The number of input features per neighbor.
-        output_dim (int): The number of output features from the model.
-        hidden (int, optional): The size of the hidden layers for all MLP components. Default: 32.
-        prob (float, optional): Dropout probability for regularization in MLP blocks. Default: 0.5.
+        observation_space (gym.spaces.Dict): Observation space containing at least:
+            - "neighbors": Box(..., shape=(num_neighbors, input_dim))
+            - "mask": Box(..., shape=(num_neighbors,))
+        features_dim (int, optional): Size of hidden layers (default=128).
 
     Attributes:
         mlp_phi (MLPphi): Module responsible for processing features into a latent space.
@@ -369,47 +373,62 @@ class DeepSetAttentionNet(nn.Module):
         torch.Tensor: Final output tensor of shape (batch_size, output_dim), representing the regression results.
     """
 
-    def __init__(self, input_dim, output_dim, hidden=32, prob=0.5):
-        super(DeepSetAttentionNet, self).__init__()
+    def __init__(self, observation_space: gym.spaces.Space, action_space: gym.spaces.Space, hidden_dim: int = 128, prob: float = 0.5):
+        super().__init__()
 
-        self.mlp_phi = MLPphi(hidden=hidden, features=input_dim, prob=prob)
-        self.mlp_omega = MLPomega(hidden=hidden, features=input_dim, prob=prob)
-        self.mlp_theta = MLPtheta(hidden=hidden, features=hidden, prob=prob)
+        # infer dimensões a partir do espaço de observação
+        observation_space = cast(gym.spaces.Dict, observation_space)
+        neighbors = observation_space.get("neighbors")
+        assert neighbors is not None, "Observation space must contain 'neighbors' key."
 
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.hidden = hidden
-        self.prob = prob
+        assert isinstance(action_space, gym.spaces.Box), \
+            "DeepSetAttentionNet only supports Box action spaces."
+        # flatten caso seja multidimensional
+        
+        input_dim, output_dim = self.extract_dim_from_space(observation_space, action_space)
 
-    # TODO: I have to find a better way to abstract "observation" to extract
-    # "mask" and "u" of it.
+        self.mlp_phi = MLPphi(features=input_dim, hidden=hidden_dim, prob=prob)
+        self.mlp_omega = MLPomega(features=input_dim, hidden=hidden_dim, prob=prob)
+        self.mlp_theta = MLPtheta(features=hidden_dim, hidden=hidden_dim, output=output_dim, prob=prob)
+
+        
+
+    def extract_dim_from_space(self, observation_space: gym.spaces.Space, action_space: gym.spaces.Space):
+
+        observation_space = cast(gym.spaces.Dict, observation_space)
+        neighbors = observation_space.get("neighbors")
+        assert neighbors is not None, "Observation space must contain 'neighbors' key."
+        assert isinstance(action_space, gym.spaces.Box), "DeepSetAttentionNet only supports Box action spaces."
+        self.input_dim = neighbors.shape[-1]  # type: ignore
+        self.hidden = int(np.prod(action_space.shape))
+
+        return self.input_dim, self.hidden
+
+
     def forward(self, observation: Dict[str, torch.Tensor]):
         """
         Forward pass of the DeepSetAttentionNet.
 
         Args:
             observation (dict): {
-                "neighbors": Tensor of shape (batch_size, num_neighbors, input_dim),
-                "mask": Tensor of shape (batch_size, num_neighbors)
+                "neighbors": Tensor (B, N, input_dim),
+                "mask": Tensor (B, N)
             }
         """
+
         u = observation["neighbors"]   # (B, N, F)
         mask = observation["mask"]     # (B, N)
-
         batch_size, num_neighbors, _ = u.shape
 
-        # Passa pelas três partes do Deep Set Attention
+        # Extração de features
         output_mlp_phi = self.mlp_phi(u)
         output_mlp_omega = self.mlp_omega(u, mask)
 
-        # Aplica pesos de atenção
+        # Atenção
         weighted_features = output_mlp_phi * output_mlp_omega
 
-        # Agrega sobre vizinhos
+        # Agregação
         aggregated_features = weighted_features.sum(dim=1).view(batch_size, -1)
 
         # Regressão final
-        output_mlp_theta = self.mlp_theta(aggregated_features, num_neighbors)
-
-        return output_mlp_theta
-
+        return self.mlp_theta(aggregated_features, num_neighbors)

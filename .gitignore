@@ -165,3 +165,7 @@ cython_debug/
 wildfire_pyro/examples/logs/
 wildfire_pyro/examples/data_explorer.py
 wildfire_pyro/examples/data_explorer2.py
+src/wildfire_pyro/examples/iowa_soil/logs/run_20251003_101121/events.out.tfevents.1759497082.Davi-PC.13612.0
+src/wildfire_pyro/examples/iowa_soil/logs/run_20251003_100711/progress.csv
+/src/wildfire_pyro/examples/iowa_soil/logs
+src/wildfire_pyro/examples/iowa_soil/save_output

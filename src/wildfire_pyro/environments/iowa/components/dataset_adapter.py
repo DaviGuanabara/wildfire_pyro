@@ -58,7 +58,6 @@ class DatasetAdapter:
 
         self.validate(data, self.metadata)
         self.data = self.sort_by_time(self.metadata, data)
-        print(f"Data loaded with {len(self.data)} rows.")
         return self.data
 
     def load_data(
@@ -78,8 +77,7 @@ class DatasetAdapter:
         features = df[feature_cols].to_numpy(dtype=float)
         targets = df[self.metadata.target].to_numpy(dtype=float)
 
-        print(f"Fitting scaler on {features.shape[0]} samples, {features.shape[1]} features.")
-        print(f"Targets shape: {targets.shape}")
+
         self.scaler.fit(features, targets)
         return df
 
@@ -140,7 +138,7 @@ class DatasetAdapter:
             high=self.params.max_neighborhood_size + 1
         )
         k = min(n_neighbors, len(candidates))
-        print("n_neighbors", n_neighbors, "-> k", k, "candidates", len(candidates))
+
         if k == 0:
             return candidates.iloc[[]]  # empty DataFrame with same columns
 
@@ -154,15 +152,10 @@ class DatasetAdapter:
         ) -> pd.DataFrame:
 
         candidates = self.data
-        print(f"Found {len(candidates)} candidates for row index {row_index}.")
         candidates = self.filter_by_index(candidates, row_index)
-        print(f"Found {len(candidates)} candidates after filter_by_index for row index {row_index}.")
         candidates = self.filter_by_id(candidates, row)
-        print(f"Found {len(candidates)} candidates after filter_by_id for row index {row_index}.")
         candidates = self.filter_by_time(candidates, row, self.params.max_delta_time)
-        print(f"Found {len(candidates)} candidates after filter_by_time for row index {row_index}.")
         candidates = self.filter_by_distance(candidates, row, self.params.max_delta_distance)
-        print(f"Found {len(candidates)} candidates after filter_by_distance for row index {row_index}.")
 
         return self.random_choice(candidates)
 

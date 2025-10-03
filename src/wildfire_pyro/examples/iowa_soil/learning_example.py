@@ -3,12 +3,12 @@ import torch
 import numpy as np
 from datetime import datetime
 
-from src.wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
-from src.wildfire_pyro.factories.learner_factory import create_deep_set_learner
-from src.wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
-from src.wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
-from src.wildfire_pyro.helpers.custom_schedulers import DebugScheduler
-from src.wildfire_pyro.helpers.learning_utils import log_evaluation
+from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
+from wildfire_pyro.factories.learner_factory import create_deep_set_learner
+from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
+from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
+from wildfire_pyro.helpers.custom_schedulers import DebugScheduler
+from wildfire_pyro.helpers.learning_utils import log_evaluation
 
 
 # ==================================================================================================

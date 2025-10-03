@@ -72,10 +72,16 @@ class SupervisedLearningManager(BaseLearningManager):
         if isinstance(observations, dict):
             observations = {k: v.to(self.device) for k, v in observations.items()}
         else:
-            observations = observations.to(self.device)
+            observations = observations.to(self.device) #type: ignore
 
         # (batch_size, 1)
         targets = targets.to(self.device)
+
+        # 🔧 garantir que targets tenha shape (B,1)
+        if targets.ndim == 1:
+            targets = targets.unsqueeze(-1)
+
+
 
         self.optimizer.zero_grad()
 
