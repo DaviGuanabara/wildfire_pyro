@@ -62,12 +62,10 @@ class BaseLearningManager:
         """
 
         self.environment = environment
-        self.device, self.verbose, self.seed = self._init_runtime(
-            runtime_parameters)
-        self.log_path, self.format_strings = self._init_logging(
-            logging_parameters)
-        self.batch_size, self.rollout_size, self.lr = self._init_model_params(
-            model_parameters)
+        self.device, self.verbose, self.seed = self._init_runtime(runtime_parameters)
+        self.log_path, self.format_strings = self._init_logging(logging_parameters)
+        #self.path_to_hdf5 = pathlib.Path(self.log_path, "path_to_hdf5")
+        self.batch_size, self.rollout_size, self.lr = self._init_model_params(model_parameters)
 
         # estado inicial do ambiente
         obs, info = self._reset_environment()
@@ -289,8 +287,7 @@ class BaseLearningManager:
             #print(prediction, label)
             #print(prediction_obs)
             self.buffer.add(prediction_obs, prediction[0], label[0])
-            self.save_to_hdf5("save_output", obs=prediction_obs,
-                              action=prediction[0], target=label[0])
+            #self.save_to_hdf5(self.path_to_hdf5, obs=prediction_obs, action=prediction[0], target=label[0])
 
             obs, reward, terminated, truncated, info = self.environment.step(prediction[0])
             self.num_timesteps += 1

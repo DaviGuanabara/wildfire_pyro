@@ -11,11 +11,13 @@ from gymnasium import spaces
 
 class AdaptativeEnvironment(BaseEnvironment):
 
-    def __init__(self, data_path, metadata: Metadata, params: AdapterParams, verbose: bool = False):
+    def __init__(self, data_path, metadata: Metadata, params: AdapterParams):
         self.dataset_metadata: Metadata = metadata
         self.dataset_adapter = DatasetAdapter(
             data_path=data_path, metadata=metadata, params=params
         )
+
+        self.verbose = params.verbose
 
         self._compute_spaces()
 
@@ -70,15 +72,21 @@ class AdaptativeEnvironment(BaseEnvironment):
 
     
 
-    def step(self, action = 0):
+    def step(self, action: Optional[Any] = None) -> tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         
         sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.next()
+
+        if terminated and self.verbose == True:
+            print("Episode terminated.")
+            
+
 
         observation = {
             "neighbors": padded.astype(np.float32),
             "mask": mask.astype(np.int8),
         }
 
+        #print("Step - neighbors:", observation["neighbors"], "mask:", observation["mask"])
         info = {
             "sample": sample,
             "feature_names": feature_names,
@@ -112,13 +120,14 @@ class AdaptativeEnvironment(BaseEnvironment):
         gt_list = []
 
         for _ in range(n_bootstrap):
-            sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.next()
+            sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.read_resample_neighbors()
 
             # 🔹 Cada observação vira um dict compatível com observation_space
             obs_dict = {
                 "neighbors": padded.astype(np.float32),
                 "mask": mask.astype(np.float32),
             }
+
             obs_list.append(obs_dict)
             gt_list.append(ground_truth.astype(np.float32))
 
@@ -127,4 +136,36 @@ class AdaptativeEnvironment(BaseEnvironment):
 
         ground_truths = np.stack(gt_list, axis=0)
 
+        self.last_observations = obs_list  
+        self.last_ground_truths = ground_truths
         return obs_list, ground_truths
+    
+    def baseline(
+        self, observations: list[dict[str, np.ndarray]]
+    ) -> np.ndarray:
+        """
+        Compute a baseline prediction over the given observations.
+
+        Args:
+            observations: list of dicts matching observation_space.
+                        Each dict must contain keys 'neighbors' and 'mask'.
+
+        Returns:
+            predictions: np.ndarray of shape (n_bootstrap, 1)
+        """
+
+        predictions = []
+
+        for obs in observations:
+            neighbors = obs["neighbors"]
+            mask = obs["mask"].astype(bool)
+
+
+            valid = neighbors[mask]
+
+            if valid.size == 0 or np.isnan(valid).all():
+                predictions.append(np.nan)
+            else:
+                predictions.append(np.nanmean(valid))
+
+        return np.array(predictions, dtype=np.float32).reshape(-1, 1)

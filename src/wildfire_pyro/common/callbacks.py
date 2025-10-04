@@ -337,7 +337,7 @@ class BootstrapEvaluationCallback(EventCallback):
 
         self.best_model_save_path = best_model_save_path
 
-        self.comparison_history: List[int] = []
+        self.comparison_history: List[np.float32] = []
         self.rolling_window_size = 100
         self.seed = seed
 
@@ -361,27 +361,26 @@ class BootstrapEvaluationCallback(EventCallback):
 
         self.evaluation_environment.reset(self.seed)
 
-        model_predictions = []
-        model_errors = []
-        baseline_errors = []
+        nn_mean_errors = []
+        baseline_mean_errors = []
+        comparisons = []
 
         for _ in range(self.n_eval):
-            model_action, _, model_error = self.bootstrap_evaluation(self.n_bootstrap)
-            _, _, baseline_error = self.baseline_evaluation()
+            nn_errors, baseline_errors = self.bootstrap_evaluation(self.n_bootstrap)
 
-            model_predictions.append(model_action)
-            model_errors.append(model_error)
-            baseline_errors.append(baseline_error)
+            nn_mean_errors.append(np.mean(nn_errors))
+            baseline_mean_errors.append(np.mean(baseline_errors))
+            comparisons.append(int(np.mean(nn_errors) < np.mean(baseline_errors)))
 
         # print(model_errors)
-        mean_model_error = np.mean(model_errors)
-        std_model_error = np.std(model_errors)
-        mean_baseline_error = np.mean(baseline_errors)
-        std_baseline_error = np.std(baseline_errors)
+        mean_model_error = np.mean(nn_mean_errors)
+        std_model_error = np.std(nn_mean_errors)
+        mean_baseline_error = np.mean(baseline_mean_errors)
+        std_baseline_error = np.std(baseline_mean_errors)
 
         # Model Over Baseline
         # This metric quantifies the win rate of the model over the baseline.
-        comparison = int(abs(mean_model_error) < abs(mean_baseline_error))
+        comparison = np.mean(comparisons, dtype=np.float32)
         self.comparison_history.append(comparison)
 
         if len(self.comparison_history) > self.rolling_window_size:
@@ -398,46 +397,33 @@ class BootstrapEvaluationCallback(EventCallback):
                                model_win_rate_over_baseline=float(model_win_rate),
         )
 
-        # STEP to forward environment
-        mean_model_predictions = np.mean(model_predictions, axis=0)
-        self.evaluation_environment.step(mean_model_predictions)
+        self.evaluation_environment.step()
 
         return results
 
-    def bootstrap_evaluation(self, n_bootstrap) -> tuple[float, float, float]:
+    def bootstrap_evaluation(self, n_bootstrap):
         """Performs a single bootstrap evaluation."""
-        bootstrap_observations, ground_truth = (
+        bootstrap_observations, ground_truths = (
             self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
         )
 
         # shape: (n_bootstrap, n_neighbors, input_dim + 1)
         # batch_obs = np.stack(bootstrap_observations)
-        actions, _ = self.learner.predict(bootstrap_observations)
+        nn_predictions, _ = self.learner.predict(bootstrap_observations)
+        baseline_prediction = self.evaluation_environment.baseline(bootstrap_observations)
 
-        # if output_dim = 1, remove extra dimensions
-        predictions = actions.squeeze().tolist()
+        nn_errors = self._compute_errors(nn_predictions, ground_truths)
+        #nn_std_errors = float(np.std(nn_errors))
 
-        mean_action = float(np.mean(actions))
-        std_action = float(np.std(actions))
+        baseline_errors = self._compute_errors(baseline_prediction, ground_truths)
+        #baseline_std_errors = float(np.std(baseline_errors))
 
-        error = self._compute_errors(mean_action, ground_truth)
+        return nn_errors, baseline_errors
 
-        return mean_action, std_action, error
-
-    def baseline_evaluation(self) -> tuple[float, float, float]:
-        """Evaluates the baseline using the error function.
-        must be called after bootstrap evaluation"""
-
-        mean_prediction, std_prediction, ground_truth = (
-            self.evaluation_environment.baseline()
-        )
-        error = self._compute_errors(mean_prediction, ground_truth)
-
-        return mean_prediction, std_prediction, error
-
-    def _compute_errors(self, mean_prediction, ground_truth) -> float:
+    def _compute_errors(self, prediction, ground_truth) -> float:
         # Handle both PyTorch losses and custom functions
-        pred_tensor = torch.tensor(mean_prediction, dtype=torch.float32)
+
+        pred_tensor = torch.tensor(prediction, dtype=torch.float32)
         gt_tensor = torch.tensor(ground_truth, dtype=torch.float32)
 
         if isinstance(self.error_function, torch.nn.modules.loss._Loss):
@@ -445,7 +431,7 @@ class BootstrapEvaluationCallback(EventCallback):
             error = error.item() if isinstance(error, torch.Tensor) else float(error)
 
         else:
-            error = self.error_function(mean_prediction, ground_truth)
+            error = self.error_function(prediction, ground_truth)
 
         return error
 

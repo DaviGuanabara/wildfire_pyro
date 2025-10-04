@@ -62,8 +62,7 @@ class SupervisedLearningManager(BaseLearningManager):
 
         # Sample a batch (entire buffer)
 
-        observations, _, targets = self.buffer.sample_batch(
-            self.batch_size)
+        observations, targets = self.buffer.sample_batch(self.batch_size)
 
 
         # (batch_size, num_neighbors, feature_dim)
@@ -77,11 +76,8 @@ class SupervisedLearningManager(BaseLearningManager):
         # (batch_size, 1)
         targets = targets.to(self.device)
 
-        # 🔧 garantir que targets tenha shape (B,1)
         if targets.ndim == 1:
             targets = targets.unsqueeze(-1)
-
-
 
         self.optimizer.zero_grad()
 
@@ -92,12 +88,12 @@ class SupervisedLearningManager(BaseLearningManager):
         # the model's prediction for the ground truth values (`targets`) based on the input
         # data. The model is trained to minimize the difference between `y_pred` and the actual ground
         # truth values during the training process.
-        y_preds = self.neural_network(observations)
 
-        # Se for tupla, pega só o primeiro elemento
+        y_preds = self.neural_network(observations)
+    
         if isinstance(y_preds, tuple):
             y_preds = y_preds[0]
-
+        
         loss = self.loss_func(y_preds, targets)
         loss.backward()
         self.optimizer.step()

@@ -35,7 +35,7 @@ model_parameters = {
     "lr": DebugScheduler(lr=0.001, verbose=verbose),
     "dropout_prob": 0.2,
     "hidden": 64,
-    "batch_size": 128,
+    "batch_size": 256,
 }
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -66,7 +66,7 @@ eval_callback = BootstrapEvaluationCallback(
     validation_environment,
     best_model_save_path=logging_parameters.get("log_path"),
     seed=get_seed("Bootstrap_Evaluation_Callback"),
-    eval_freq=5_000,
+    eval_freq=10_000,
     n_eval=n_eval,
     n_bootstrap=n_bootstrap,
     verbose=verbose,
@@ -96,6 +96,7 @@ print("Aprendizagem concluída")
 # ==================================================================================================
 
 print("\n=== Starting Bootstrap Evaluation ===")
+print("In maintenance...")
 observation, info = test_environment.reset(seed=get_seed("test"))
 wins = []
 metrics = {}
@@ -108,33 +109,5 @@ for step in range(evaluations):
     bootstrap_observations, ground_truth = test_environment.get_bootstrap_observations(
         n_bootstrap
     )
-
-    metrics["baseline_prediction"], metrics["baseline_std"], _ = (
-        test_environment.baseline()
-    )
-
-    actions, _ = deep_set_learner.predict(bootstrap_observations)
-    predictions = actions.squeeze().tolist()
-
-    metrics["mean_prediction"] = np.mean(predictions)
-    metrics["std_prediction"] = np.std(predictions)
-    metrics["error"] = metrics["mean_prediction"] - ground_truth
-    metrics["baseline_error"] = metrics["baseline_prediction"] - ground_truth
-    metrics["step"] = step
-
-    wins.append(metrics["error"] < metrics["baseline_error"])
-
-    log_evaluation(metrics, info, step)
-
-    observation, reward, terminated, truncated, info = test_environment.step(
-        np.array(metrics["mean_prediction"])
-    )
-
-    if terminated:
-        print("\nThe episode has ended.")
-        observation, info = test_environment.reset(seed=get_seed("test"))
-        break
-
-print(f"Final of evaluation. Win Rate: {np.mean(wins)}")
 
 test_environment.close()

@@ -49,7 +49,7 @@ class ReplayBuffer:
         if self.position >= self.max_size:
             self.full = True
 
-    def sample_batch(self, batch_size: int):
+    def sample_batch(self, batch_size: int) -> Tuple[Any, torch.Tensor]:
         buffer_size = self.max_size if self.full else self.position
         if buffer_size < batch_size:
             raise ValueError(f"Not enough samples: {buffer_size} < {batch_size}")
@@ -57,7 +57,6 @@ class ReplayBuffer:
         indices = np.random.choice(buffer_size, batch_size, replace=False)
 
         obs_batch = [self.observations[i] for i in indices]
-        act_batch = [self.actions[i] for i in indices]
         tgt_batch = [self.targets[i] for i in indices]
 
         # 🔹 Se observação for tensor
@@ -71,7 +70,6 @@ class ReplayBuffer:
 
         return (
             obs_batch,
-            torch.stack(act_batch),
             torch.stack(tgt_batch),
         )
 

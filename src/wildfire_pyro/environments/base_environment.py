@@ -12,11 +12,12 @@ class BaseEnvironment(Env, ABC):
     def __init__(self):
         self._context_handlers = {}
 
-    def baseline(self):
+    @abstractmethod
+    def baseline(self, bootstrap_observations: np.ndarray) -> np.ndarray:
         """Returns a baseline prediction. Should be overridden if applicable.
         it should return:
-        prediction, standart_deviation, ground_truth"""
-        return np.nan, np.nan, np.nan
+        prediction"""
+        return np.array([])
 
     def render(self, mode: str = "human") -> Any:
         """
@@ -57,7 +58,7 @@ class BaseEnvironment(Env, ABC):
 
 
     @abstractmethod
-    def step(self, action: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
+    def step(self, action: Optional[Any] = None) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         """
         Executes one time step within the environment.
 
@@ -77,7 +78,9 @@ class BaseEnvironment(Env, ABC):
     
 
     @abstractmethod
-    def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, float]:
+    def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
+    def bootstrap_baseline(self) -> np.ndarray:
+        return np.array([])
     

@@ -13,7 +13,7 @@ class IowaEnvironment(AdaptativeEnvironment):
         params = self._params(verbose)
 
         super().__init__(
-            data_path=data_path, metadata=metadata, params=params, verbose=verbose
+            data_path=data_path, metadata=metadata, params=params
         )
 
     def _params(self, verbose: bool) -> AdapterParams:

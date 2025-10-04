@@ -85,7 +85,7 @@ def to_obs_tensor(observation, observation_space, device):
             for k, sp in observation_space.spaces.items():
                 t = torch.as_tensor(
                     observation[k], dtype=torch.float32, device=device)
-                if t.ndim == len(sp.shape):
+                if t.ndim == len(sp.shape): #type: ignore
                     t = t.unsqueeze(0)  # adiciona batch
                 out[k] = t
             return out

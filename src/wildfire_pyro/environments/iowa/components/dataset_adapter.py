@@ -32,7 +32,11 @@ class DatasetAdapter:
         self.rng = rng or np.random.default_rng()
         self._set_shapes()
 
-        self.cursor = self.params.min_neighborhood_size
+
+        self.unique_times = np.sort(self.data[self.metadata.time].unique())
+        self.cursor = self.rng.integers(int(
+            self.params.max_delta_time), self.unique_times.size - int(self.params.max_delta_time))
+
         self.done = False
 
     def _set_shapes(self):
@@ -64,6 +68,10 @@ class DatasetAdapter:
         self, data_path: str, metadata: Optional[Metadata] = None
     ) -> pd.DataFrame:
         df = self._load_data(data_path, metadata)
+        # 🔧 Sanitiza dados numéricos antes de treinar o scaler
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
         if self.params.verbose:
             logger.info(f"Data loaded successfully from {data_path}")
             df.info()
@@ -71,12 +79,13 @@ class DatasetAdapter:
 
         # split features and targets
         feature_cols = [c for c in df.columns
-                        if c not in ([self.metadata.id]
+                        if c not in ([self.metadata.id, self.metadata.time] + self.metadata.position
                                     + (self.metadata.exclude or []))]
 
         features = df[feature_cols].to_numpy(dtype=float)
         targets = df[self.metadata.target].to_numpy(dtype=float)
 
+        self.feature_cols = feature_cols
 
         self.scaler.fit(features, targets)
         return df
@@ -142,7 +151,7 @@ class DatasetAdapter:
         if k == 0:
             return candidates.iloc[[]]  # empty DataFrame with same columns
 
-        idx = self.rng.choice(candidates.index, size=k, replace=False)
+        idx = self.rng.choice(candidates.index, size=k, replace=True)
         return candidates.loc[idx]
 
     def get_neighbors(
@@ -180,13 +189,12 @@ class DatasetAdapter:
         self,
         formatted: pd.DataFrame,
         row: pd.Series,
-        neighbors: pd.DataFrame,
-        max_delta_distance: float,
-        max_delta_time: float,
+        neighbors: pd.DataFrame
     ) -> pd.DataFrame:
         delta_time, delta_pos = self._compute_deltas(row, neighbors)
-        delta_time = delta_time / max_delta_time
-        delta_pos = delta_pos / max_delta_distance
+        
+        delta_time = delta_time / self.params.max_delta_time
+        delta_pos = delta_pos / self.params.max_delta_distance
 
         formatted["delta_time"] = delta_time
         for i, col in enumerate(self.metadata.position):
@@ -199,7 +207,7 @@ class DatasetAdapter:
     ) -> pd.DataFrame:
         for tgt in self.metadata.target:
             if tgt in neighbors.columns:
-                formatted[f"target_{tgt}"] = neighbors[tgt].values
+                formatted[f"{tgt}"] = neighbors[tgt].values
         return formatted
 
     def _add_features(
@@ -214,7 +222,7 @@ class DatasetAdapter:
         }
         feature_cols = [c for c in neighbors.columns if c not in exclude_cols]
         for col in feature_cols:
-            formatted[f"feat_{col}"] = neighbors[col].values
+            formatted[f"{col}"] = neighbors[col].values
         return formatted
 
     def _get_shapes(self) -> Tuple[Tuple[int, int], Tuple[int], Tuple[int]]:
@@ -238,8 +246,6 @@ class DatasetAdapter:
         formatted = self.format_neighbors(
             sample,
             neighbors,
-            max_delta_distance=self.params.max_delta_distance,
-            max_delta_time=self.params.max_delta_time,
         )
 
         num_features = formatted.shape[1]
@@ -250,24 +256,42 @@ class DatasetAdapter:
         return padded_shape, mask_shape, ground_truth_shape
 
 
+    def reorder_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        ordered_cols = self.feature_cols
+        return df[ordered_cols]
 
     def format_neighbors(
         self,
         row: pd.Series,
         neighbors: pd.DataFrame,
-        max_delta_distance: float,
-        max_delta_time: float,
     ) -> pd.DataFrame:
 
         formatted = pd.DataFrame(index=neighbors.index)
-
-        formatted = self._add_deltas(
-            formatted, row, neighbors, max_delta_distance, max_delta_time
-        )
-        formatted = self._add_targets(formatted, neighbors)
         formatted = self._add_features(formatted, neighbors)
+        formatted = self._add_targets(formatted, neighbors)
+        formatted = self.reorder_features(formatted)
 
-        return formatted
+        if formatted.isna().any().any():
+            print("⚠️ NaN found in formatted before normalization")
+            print(formatted.columns[formatted.isna().any()])
+
+
+        padded_scaled = self.scaler.transform_features(formatted.to_numpy())
+
+        
+        df_with_columns = pd.DataFrame(padded_scaled, columns=self.feature_cols, index=formatted.index)
+
+        if df_with_columns.isna().any().any():
+            print("⚠️ NaN found in df_with_columns after normalization")
+            print(df_with_columns.columns[df_with_columns.isna().any()])
+
+        return self._add_deltas(df_with_columns, row, neighbors)
+
+
+        
+        
+
+        #return formatted
 
     def pad_neighbors(
         self,
@@ -303,24 +327,44 @@ class DatasetAdapter:
         # 🔹 Normalize features and targets
         padded_scaled = self.scaler.transform_features(padded)
         ground_truth_scaled  = self.scaler.transform_target(ground_truth)
+
         return padded_scaled, ground_truth_scaled
 
-    def next(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
+    def _save_last_data(self, sample, padded_scaled, mask, feature_names, ground_truth_scaled):
+        self.last_sample = sample
+        self.last_padded = padded_scaled
+        self.last_mask = mask
+        self.last_feature_names = feature_names
+        self.last_ground_truth = ground_truth_scaled
+
+    def _get_sample(self, cursor) -> pd.Series:
+        if cursor >= len(self.unique_times):
+            raise Exception("[dataset_adapter] no more dates.")
+
+        current_time = self.unique_times[cursor]
+        time_slice = self.data[self.data[self.metadata.time] == current_time]
+
+        # Escolhe um índice aleatório do subconjunto de linhas daquele timestamp
+        chosen_idx = self.rng.choice(time_slice.index)
+        sample = time_slice.loc[chosen_idx]
+        return sample
+
+
+
+    def _read(self, cursor) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
         """
         Return next row with its neighborhood (padded).
         Iterates sequentially and flags `done=True` when the dataset ends.
         Normalizes features and targets using the configured scaler.
         """
 
-        if self.cursor >= len(self.data):
-            raise Exception("[dataset_adapter] no more data.")
+        # Verifica antes de ler
+        if self.cursor >= len(self.unique_times) - 1:
+            self.done = True
 
-        self.done = False
-        sample = self.data.iloc[self.cursor]
+        sample = self._get_sample(cursor)
         row_index = sample.name
-        self.cursor += 1   
-
-
+        
         neighbors = self.get_neighbors(
             row_index=cast(int, row_index),
             row=sample
@@ -329,23 +373,41 @@ class DatasetAdapter:
         formatted = self.format_neighbors(
             sample,
             neighbors,
-            max_delta_distance=self.params.max_delta_distance,
-            max_delta_time=self.params.max_delta_time,
         )
+
+        feature_names = list(formatted.columns)
+        ground_truth = self.get_ground_truth(sample)
+        ground_truth_scaled = self.scaler.transform_target(ground_truth)
 
         padded, mask = self.pad_neighbors(
             formatted, max_neighborhood_size=self.params.max_neighborhood_size
         )
 
-        feature_names = list(formatted.columns)
-        ground_truth = self.get_ground_truth(sample)
+        #padded_scaled, ground_truth_scaled = self.normalize_observation(padded, ground_truth)
+        self._save_last_data(sample, padded, mask, feature_names, ground_truth_scaled)
+        
+        return sample, padded, mask, feature_names, ground_truth_scaled, self.done
 
-        # 🔹 Normalize features and targets
-        padded_scaled, ground_truth_scaled = self.normalize_observation(
-            padded, ground_truth)
 
-        return sample, padded_scaled, mask, feature_names, ground_truth_scaled, self.done
+    def read_resample_neighbors(self):
+        
+        return self._read(self.cursor)
 
+    def next(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
+        """
+        Return next row with its neighborhood (padded).
+        Iterates sequentially and flags `done=True` when the dataset ends.
+        """
+
+        reading = self._read(self.cursor)
+        self.cursor += 1  # Só avança depois de ler com sucesso
+        return reading
+
+
+    def last(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
+        """Returns the last sample returned by `next()`."""
+        return (self.last_sample, self.last_padded, self.last_mask,
+                self.last_feature_names, self.last_ground_truth, self.done)
 
 
 if __name__ == "__main__":
@@ -353,7 +415,7 @@ if __name__ == "__main__":
 
     # ⚠️ Preencha com o caminho real do seu CSV
     # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
-    data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
+    data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\src\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
 
     # Exemplo de metadados
     metadata = Metadata(
@@ -379,20 +441,21 @@ if __name__ == "__main__":
     )
 
     params = AdapterParams(
-        min_neighborhood_size=5,
-        max_neighborhood_size=10,
+        min_neighborhood_size=1,
+        max_neighborhood_size=4,
         max_delta_distance=1e9,
-        max_delta_time=10.0,
+        max_delta_time=10,
         verbose=True,
     )
 
     adapter = DatasetAdapter(data_path, metadata, params=params)
 
     # Lê uma amostra com vizinhança
-    sample, padded, mask, feature_names, ground_truth, done = adapter.next()
+    for _i in range(256):
+        sample, padded, mask, feature_names, ground_truth, done = adapter.next()
 
-    print("\n=== Sample (row) ===")
-    print(sample)
+    #print("\n=== Sample (row) ===")
+    #print(sample)
     
     print("\n=== Padded neighbors ===")
     print(feature_names)
@@ -403,3 +466,5 @@ if __name__ == "__main__":
 
     print("\n=== Ground Truth ===")
     print(ground_truth)
+
+    print("cursor:", adapter.cursor)
