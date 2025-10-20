@@ -1,3 +1,0 @@
-run/seed,run/n_eval,run/n_bootstrap,eval/model/win_rate_over_baseline,eval/model/baseline_std,train/lr,eval/seed,time/total_timesteps,eval/model/baseline_error,eval/model/batch_error,eval/model/std_error
-42,5,2,,,,,,,,
-,,,0.4000000059604645,0.5925545343339093,0.001,937660284,10000,0.8038575954735279,0.5371461063623428,0.42949533728277933
