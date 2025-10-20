@@ -169,3 +169,5 @@ src/wildfire_pyro/examples/iowa_soil/logs/run_20251003_101121/events.out.tfevent
 src/wildfire_pyro/examples/iowa_soil/logs/run_20251003_100711/progress.csv
 /src/wildfire_pyro/examples/iowa_soil/logs
 src/wildfire_pyro/examples/iowa_soil/save_output
+examples/iowa_soil/logs/run_20251004_124816/best_model
+/examples/iowa_soil/logs

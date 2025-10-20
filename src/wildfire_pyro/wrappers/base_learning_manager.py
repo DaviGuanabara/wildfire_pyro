@@ -197,7 +197,8 @@ class BaseLearningManager:
             param_group["lr"] = new_lr
 
         if hasattr(self, "logger"):
-            self.logger.record("train/lr", new_lr, exclude="stdout")
+            self.logger.record("lr/train", new_lr, exclude="stdout")
+            #self.logger.dump(self.num_timesteps)
 
         if self.verbose > 0:
             print(

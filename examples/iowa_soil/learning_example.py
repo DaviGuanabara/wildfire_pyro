@@ -5,7 +5,7 @@ from datetime import datetime
 
 from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
 from wildfire_pyro.factories.learner_factory import create_deep_set_learner
-from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback
+from wildfire_pyro.common.callbacks import BootstrapEvaluationCallback, CallbackList, TrainLoggingCallback
 from wildfire_pyro.common.seed_manager import configure_seed_manager, get_seed
 from wildfire_pyro.helpers.custom_schedulers import DebugScheduler
 from wildfire_pyro.helpers.learning_utils import log_evaluation
@@ -72,6 +72,10 @@ eval_callback = BootstrapEvaluationCallback(
     verbose=verbose,
 )
 
+train_callback = TrainLoggingCallback(log_freq=1000, verbose=True)
+
+callbacks = CallbackList([train_callback, eval_callback])
+
 deep_set_learner = create_deep_set_learner(
     train_environment, model_parameters, logging_parameters, runtime_parameters
 )
@@ -83,7 +87,7 @@ deep_set_learner = create_deep_set_learner(
 
 train_environment.reset(runtime_parameters.get("seed", 42))
 deep_set_learner.learn(
-    total_timesteps=total_training_steps, callback=eval_callback, progress_bar=True
+    total_timesteps=total_training_steps, callback=callbacks, progress_bar=True
 )
 
 train_environment.close()

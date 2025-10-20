@@ -348,9 +348,8 @@ class BootstrapEvaluationCallback(EventCallback):
         super()._init_callback()
 
         if not self._initial_log_done:
-            self.logger.record("run/seed", get_global_seed())
-            self.logger.record("run/n_eval", self.n_eval)
-            self.logger.record("run/n_bootstrap", self.n_bootstrap)
+            #self.logger.record("run/n_eval", self.n_eval)
+            #self.logger.record("run/n_bootstrap", self.n_bootstrap)
             self.logger.dump(0)
 
     def _evaluate_learner(self) -> EvaluationMetrics:
@@ -452,15 +451,16 @@ class BootstrapEvaluationCallback(EventCallback):
 
     def _log_to_logger(self, results: EvaluationMetrics):
 
-        self.logger.record("eval/seed", self.seed)
+        self.logger.record("eval/loss", results.model_error)
 
-        self.logger.record("eval/model/batch_error", results.model_error)
-        self.logger.record("eval/model/std_error", results.model_std)
+        self.logger.record("eval/std_error",
+                           results.model_std, exclude=("tensorboard",))
 
         if results.has_baseline():
-            self.logger.record("eval/model/baseline_error", results.baseline_error)
-            self.logger.record("eval/model/baseline_std", results.baseline_std)
-            self.logger.record("eval/model/win_rate_over_baseline", results.model_win_rate_over_baseline)
+            self.logger.record("eval/baseline_error", results.baseline_error)
+            self.logger.record("eval/baseline_std",
+                               results.baseline_std, exclude=("tensorboard",))
+            self.logger.record("eval/win_rate_over_baseline", results.model_win_rate_over_baseline)
 
         self.logger.record("time/total_timesteps", self.num_timesteps)
         self.logger.dump(self.num_timesteps)
@@ -477,3 +477,37 @@ class BootstrapEvaluationCallback(EventCallback):
                 os.makedirs(self.best_model_save_path, exist_ok=True)
                 self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
             self.best_batch_error = model_error
+
+class TrainLoggingCallback(BaseCallback):
+    """
+    Logs training loss periodically so it can be visualized alongside eval loss.
+
+    :param log_freq: How often (in steps) to log the training loss.
+    :param verbose: Verbosity level (0 = silent, 1 = info).
+    """
+
+    def __init__(self, log_freq: int = 1000, verbose: int = 0):
+        super().__init__(verbose)
+        self.log_freq = log_freq
+        self.loss_history = []
+
+    def _on_step(self) -> bool:
+        """Called at every training step."""
+        # Check if learner has a loss attribute updated by _train()
+        if not hasattr(self.learner, "loss"):
+            return True  # no loss yet
+
+        loss_value = float(getattr(self.learner, "loss", np.nan))
+        self.loss_history.append(loss_value)
+
+        # Log periodically
+        if self.n_calls % self.log_freq == 0:
+            avg_loss = np.mean(self.loss_history[-self.log_freq:])
+            self.logger.record("train/loss", avg_loss)
+            self.logger.record("time/total_timesteps", self.num_timesteps)
+            self.logger.dump(self.num_timesteps)
+
+            if self.verbose > 0:
+                print(
+                    f"[TrainLoggingCallback] step={self.num_timesteps} | avg_loss={avg_loss:.4f}")
+        return True
