@@ -171,3 +171,6 @@ src/wildfire_pyro/examples/iowa_soil/logs/run_20251003_100711/progress.csv
 src/wildfire_pyro/examples/iowa_soil/save_output
 examples/iowa_soil/logs/run_20251004_124816/best_model
 /examples/iowa_soil/logs
+/examples/iowa_soil/logs
+examples/iowa_soil/logs/run_20251004_124816/best_model
+examples/iowa_soil/logs/run_20251004_124816/events.out.tfevents.1759592897.Davi-PC.71072.0
