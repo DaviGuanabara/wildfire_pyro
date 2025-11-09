@@ -6,15 +6,15 @@ from wildfire_pyro.environments.iowa.adaptative_environment import (
 )
 
 
+# TODO REPENSAR O NOME 'ADAPTATIVE ENVIRONMENT'
+#'PARAMETRIZÁVEL ?' 'Custom ?' 'Generalized ?' 'Generic ?'
 class IowaEnvironment(AdaptativeEnvironment):
     def __init__(self, data_path, verbose: bool = False):
 
         metadata = self._metadata()
         params = self._params(verbose)
 
-        super().__init__(
-            data_path=data_path, metadata=metadata, params=params
-        )
+        super().__init__(data_path=data_path, metadata=metadata, params=params)
 
     def _params(self, verbose: bool) -> AdapterParams:
         return AdapterParams(
@@ -26,9 +26,10 @@ class IowaEnvironment(AdaptativeEnvironment):
         )
 
     def _metadata(self) -> Metadata:
+        # TODO: Trocar para features (remover o 'exclude')
         return Metadata(
             time="valid",  # coluna de tempo
-            position=["Latitude1", "Longitude1", "Elevation [m]"],  # colunas espaciais
+            position=["Latitude1", "Longitude1"],  # colunas espaciais
             id="station",  # coluna de identificação
             exclude=[
                 "out_lwmv_1",
@@ -57,7 +58,8 @@ if __name__ == "__main__":
 
     # ⚠️ Preencha com o caminho real do seu CSV de treino
     data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
-
+    data_path_mac = "/Users/Davi/Documents/GitHub/wildfire_workspace/wildfire/examples/iowa_soil/data/train.csv"
+    data_path = data_path_mac
     # Instancia o ambiente
     env = IowaEnvironment(data_path=data_path, verbose=True)
 
