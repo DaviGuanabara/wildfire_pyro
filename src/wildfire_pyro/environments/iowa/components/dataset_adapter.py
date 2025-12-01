@@ -7,7 +7,8 @@ import logging
 
 from wildfire_pyro.environments.iowa.components.adapter_params import AdapterParams
 from wildfire_pyro.environments.iowa.components.custom_scale import CustomScaler
-from wildfire_pyro.environments.iowa.components.meta_data import Metadata
+from wildfire_pyro.environments.iowa.components.metadata import Metadata
+from wildfire_pyro.environments.iowa.components.neighbor_schema import NeighborSchema
 
 logger = logging.getLogger("SensorManager")
 logger.setLevel(logging.INFO)
@@ -15,6 +16,7 @@ logger.setLevel(logging.INFO)
 
 
 class DatasetAdapter:
+    "A component that maps a dataset to framework’s internal semantic model."
 
     def __init__(self, data_path, metadata: Metadata, params: AdapterParams, rng: np.random.Generator = np.random.default_rng(),
                  scaler: Optional[CustomScaler] = None):
@@ -64,13 +66,26 @@ class DatasetAdapter:
         self.data = self.sort_by_time(self.metadata, data)
         return self.data
 
+    def _clean_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        # Substitui inf e NaN por 0.0 em todas as colunas numéricas
+        numeric_cols = data.select_dtypes(include=[np.number]).columns
+        data[numeric_cols] = data[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        return data
+
+    def _split_features_targets(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        feature_cols = self.metadata.features
+        #self.feature_cols = feature_cols
+        features = df[feature_cols].to_numpy(dtype=float)
+        targets = df[self.metadata.target].to_numpy(dtype=float)
+
+        return features, targets
+    
     def load_data(
         self, data_path: str, metadata: Optional[Metadata] = None
     ) -> pd.DataFrame:
         df = self._load_data(data_path, metadata)
-        # 🔧 Sanitiza dados numéricos antes de treinar o scaler
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        
+        df = self._clean_data(df)
 
         if self.params.verbose:
             logger.info(f"Data loaded successfully from {data_path}")
@@ -78,14 +93,7 @@ class DatasetAdapter:
             logger.info(f"Metadata: {self.metadata}")
 
         # split features and targets
-        feature_cols = [c for c in df.columns
-                        if c not in ([self.metadata.id, self.metadata.time] + self.metadata.position
-                                    + (self.metadata.exclude or []))]
-
-        features = df[feature_cols].to_numpy(dtype=float)
-        targets = df[self.metadata.target].to_numpy(dtype=float)
-
-        self.feature_cols = feature_cols
+        features, targets = self._split_features_targets(df)
 
         self.scaler.fit(features, targets)
         return df
@@ -185,45 +193,53 @@ class DatasetAdapter:
 
         return delta_time, delta_pos
 
-    def _add_deltas(
-        self,
-        formatted: pd.DataFrame,
-        row: pd.Series,
-        neighbors: pd.DataFrame
-    ) -> pd.DataFrame:
+    def _add_deltas(self, formatted: pd.DataFrame, row: pd.Series, neighbors: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         delta_time, delta_pos = self._compute_deltas(row, neighbors)
-        
-        delta_time = delta_time / self.params.max_delta_time
-        delta_pos = delta_pos / self.params.max_delta_distance
 
-        formatted["delta_time"] = delta_time
+        # Normalize using the CustomScaler — not hardcoded logic here
+        delta_time_norm = self.scaler.normalize_delta_time(delta_time)
+        delta_pos_norm = self.scaler.normalize_delta_pos(delta_pos)
+
+        formatted["delta_time"] = delta_time_norm
+
+        # delta_x, delta_y, delta_z ... depending on metadata.position
+        new_cols = ["delta_time"]
         for i, col in enumerate(self.metadata.position):
-            formatted[f"delta_{col}"] = delta_pos[:, i]
+            formatted[f"delta_{col}"] = delta_pos_norm[:, i]
+            new_cols.append(f"delta_{col}")
 
-        return formatted
+        return formatted, new_cols
+
 
     def _add_targets(
         self, formatted: pd.DataFrame, neighbors: pd.DataFrame
-    ) -> pd.DataFrame:
-        for tgt in self.metadata.target:
-            if tgt in neighbors.columns:
-                formatted[f"{tgt}"] = neighbors[tgt].values
-        return formatted
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        
+        raw = neighbors[self.metadata.target].to_numpy(dtype=float)
+        scaled = self.scaler.transform_target(raw)
+        new_cols = []
+        for i, tgt in enumerate(self.metadata.target):
+            formatted[f"{tgt}"] = scaled[:, i]
+            new_cols.append(f"{tgt}")
 
-    def _add_features(
-        self, formatted: pd.DataFrame, neighbors: pd.DataFrame
-    ) -> pd.DataFrame:
-        exclude_cols = {
-            self.metadata.id,
-            self.metadata.time,
-            *self.metadata.position,
-            *self.metadata.target,
-            *(self.metadata.exclude or []),  # 👈 inclui exclude aqui
-        }
-        feature_cols = [c for c in neighbors.columns if c not in exclude_cols]
-        for col in feature_cols:
-            formatted[f"{col}"] = neighbors[col].values
-        return formatted
+        return formatted, new_cols
+
+    def _add_features(self, formatted: pd.DataFrame, neighbors: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+        # 1) Extract raw feature matrix
+        raw = neighbors[self.metadata.features].to_numpy(dtype=float)
+
+        # 2) Scale it
+        scaled = self.scaler.transform_features(raw)
+
+        # 3) Insert into formatted
+        new_cols = []
+        for i, col in enumerate(self.metadata.features):
+            formatted[col] = scaled[:, i]
+            new_cols.append(col)
+
+        return formatted, new_cols
+
+    
 
     def _get_shapes(self) -> Tuple[Tuple[int, int], Tuple[int], Tuple[int]]:
         """
@@ -255,10 +271,9 @@ class DatasetAdapter:
 
         return padded_shape, mask_shape, ground_truth_shape
 
-
-    def reorder_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        ordered_cols = self.feature_cols
-        return df[ordered_cols]
+    def sort_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        sorted_cols = self.metadata.target + self.metadata.features
+        return df[sorted_cols]
 
     def format_neighbors(
         self,
@@ -266,32 +281,19 @@ class DatasetAdapter:
         neighbors: pd.DataFrame,
     ) -> pd.DataFrame:
 
-        formatted = pd.DataFrame(index=neighbors.index)
-        formatted = self._add_features(formatted, neighbors)
-        formatted = self._add_targets(formatted, neighbors)
-        formatted = self.reorder_features(formatted)
-
-        if formatted.isna().any().any():
-            print("⚠️ NaN found in formatted before normalization")
-            print(formatted.columns[formatted.isna().any()])
-
-
-        padded_scaled = self.scaler.transform_features(formatted.to_numpy())
-
         
-        df_with_columns = pd.DataFrame(padded_scaled, columns=self.feature_cols, index=formatted.index)
+        formatted: pd.DataFrame = pd.DataFrame(index=neighbors.index)
+        formatted, target_cols = self._add_targets(formatted, neighbors)
+        formatted, feature_cols = self._add_features(formatted, neighbors)
+        formatted, delta_cols = self._add_deltas(formatted, row, neighbors)
 
-        if df_with_columns.isna().any().any():
-            print("⚠️ NaN found in df_with_columns after normalization")
-            print(df_with_columns.columns[df_with_columns.isna().any()])
+        if not hasattr(self, 'neighbor_schema'):
+            self.neighbor_schema = NeighborSchema.from_formatted(
+                formatted, target_cols, feature_cols, delta_cols
+            )
 
-        return self._add_deltas(df_with_columns, row, neighbors)
 
-
-        
-        
-
-        #return formatted
+        return formatted
 
     def pad_neighbors(
         self,
@@ -365,19 +367,13 @@ class DatasetAdapter:
         sample = self._get_sample(cursor)
         row_index = sample.name
         
-        neighbors = self.get_neighbors(
-            row_index=cast(int, row_index),
-            row=sample
-        )
+        neighbors = self.get_neighbors(row_index=cast(int, row_index), row=sample)
 
-        formatted = self.format_neighbors(
-            sample,
-            neighbors,
-        )
+        formatted = self.format_neighbors(sample, neighbors)
 
         feature_names = list(formatted.columns)
         ground_truth = self.get_ground_truth(sample)
-        ground_truth_scaled = self.scaler.transform_target(ground_truth)
+        ground_truth_scaled = self.scaler.transform_target(ground_truth.reshape(1, -1)).flatten()
 
         padded, mask = self.pad_neighbors(
             formatted, max_neighborhood_size=self.params.max_neighborhood_size
@@ -415,27 +411,26 @@ if __name__ == "__main__":
 
     # ⚠️ Preencha com o caminho real do seu CSV
     # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
-    data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\src\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
+    #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\src\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
+    data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
 
-    # Exemplo de metadados
+
+
     metadata = Metadata(
         time="valid",  # coluna de tempo
-        position=["Latitude1", "Longitude1", "Elevation [m]"],  # colunas espaciais
+        position=["Latitude1", "Longitude1"],  # colunas espaciais
         id="station",  # coluna de identificação
-        exclude=[
-            "out_lwmv_1",
-            "out_lwmv_2",
-            "out_lwmdry_1_tot",
-            "out_lwmcon_1_tot",
-            "out_lwmdry_2_tot",
-            "out_lwmcon_2_tot",
-            "out_lwmwet_2_tot",  # colunas a excluir
-            "ID",
-            "Archive Begins",
-            "Archive Ends",
-            "IEM Network",
-            "Attributes",
-            "Station Name",
+        features=[
+            "in_high", "in_low", #temperature
+            "in_rh_min", "in_rh", "in_rh_max", #relative humidity min, avg, max
+            "in_solar_mj", #solar radiation
+            
+            "in_precip", #preciptation
+            "in_speed", #wind speed
+            # A sudden, brief increase in wind speed, typically lasting 2–5 seconds, above the mean wind speed.
+            "in_gust",
+            "in_et", #evapotranspiration
+            "Elevation [m]", #elevation
         ],
         target=["out_lwmwet_1_tot"],  # , "out_lwmwet_2_tot"]  # colunas alvo
     )
@@ -448,7 +443,7 @@ if __name__ == "__main__":
         verbose=True,
     )
 
-    adapter = DatasetAdapter(data_path, metadata, params=params)
+    adapter = DatasetAdapter(data_path_windows, metadata, params=params)
 
     # Lê uma amostra com vizinhança
     for _i in range(256):

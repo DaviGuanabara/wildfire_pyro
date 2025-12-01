@@ -21,15 +21,16 @@ class CustomScaler:
         self.feature_scaler.fit(features)
         self.target_scaler.fit(targets)
 
-    def transform_features(self, neighbor: np.ndarray) -> np.ndarray:
+    def transform_features(self, neighborhood: np.ndarray) -> np.ndarray:
     
-        return self.feature_scaler.transform(neighbor)
+        return self.feature_scaler.transform(neighborhood)
 
-    def transform_target(self, target: np.ndarray) -> np.ndarray:
+    def transform_target(self, targets: np.ndarray) -> np.ndarray:
         """
-        Normalize a single ground truth (T,).
+        targets: shape (num_neighbors, n_targets)
         """
-        return self.target_scaler.transform(target.reshape(1, -1)).flatten()
+        #return self.target_scaler.transform(target.reshape(1, -1)).flatten()
+        return self.target_scaler.transform(targets)
     
     
 

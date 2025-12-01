@@ -1,20 +1,17 @@
 import numpy as np
 from wildfire_pyro.environments.iowa.components.adapter_params import AdapterParams
-from wildfire_pyro.environments.iowa.components.meta_data import Metadata
-from wildfire_pyro.environments.iowa.adaptative_environment import (
-    AdaptativeEnvironment,
-)
+from wildfire_pyro.environments.iowa.components.metadata import Metadata
+from wildfire_pyro.environments.iowa.parametric_environment import ParametricEnvironment
 
 
-# TODO REPENSAR O NOME 'ADAPTATIVE ENVIRONMENT'
-#'PARAMETRIZÁVEL ?' 'Custom ?' 'Generalized ?' 'Generic ?'
-class IowaEnvironment(AdaptativeEnvironment):
-    def __init__(self, data_path, verbose: bool = False):
+
+class IowaEnvironment(ParametricEnvironment):
+    def __init__(self, data_path, verbose: bool = False, baseline_type="mean_neighbor"):
 
         metadata = self._metadata()
         params = self._params(verbose)
 
-        super().__init__(data_path=data_path, metadata=metadata, params=params)
+        super().__init__(data_path=data_path, metadata=metadata, params=params, baseline_type=baseline_type)
 
     def _params(self, verbose: bool) -> AdapterParams:
         return AdapterParams(
@@ -26,25 +23,22 @@ class IowaEnvironment(AdaptativeEnvironment):
         )
 
     def _metadata(self) -> Metadata:
-        # TODO: Trocar para features (remover o 'exclude')
+
         return Metadata(
             time="valid",  # coluna de tempo
             position=["Latitude1", "Longitude1"],  # colunas espaciais
             id="station",  # coluna de identificação
-            exclude=[
-                "out_lwmv_1",
-                "out_lwmv_2",
-                "out_lwmdry_1_tot",
-                "out_lwmcon_1_tot",
-                "out_lwmdry_2_tot",
-                "out_lwmcon_2_tot",
-                "out_lwmwet_2_tot",  # colunas a excluir
-                "ID",
-                "Archive Begins",
-                "Archive Ends",
-                "IEM Network",
-                "Attributes",
-                "Station Name",
+            features=[
+                "in_high", "in_low",  # temperature
+                "in_rh_min", "in_rh", "in_rh_max",  # relative humidity min, avg, max
+                "in_solar_mj",  # solar radiation
+
+                "in_precip",  # preciptation
+                "in_speed",  # wind speed
+                # A sudden, brief increase in wind speed, typically lasting 2–5 seconds, above the mean wind speed.
+                "in_gust",
+                "in_et",  # evapotranspiration
+                "Elevation [m]",  # elevation
             ],
             # , "out_lwmwet_2_tot"]  # colunas alvo
             target=["out_lwmwet_1_tot"],
@@ -59,9 +53,10 @@ if __name__ == "__main__":
     # ⚠️ Preencha com o caminho real do seu CSV de treino
     data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
     data_path_mac = "/Users/Davi/Documents/GitHub/wildfire_workspace/wildfire/examples/iowa_soil/data/train.csv"
+    data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
     data_path = data_path_mac
     # Instancia o ambiente
-    env = IowaEnvironment(data_path=data_path, verbose=True)
+    env = IowaEnvironment(data_path=data_path_windows, verbose=True)
 
     # Reset do ambiente
     obs, info = env.reset()
@@ -86,3 +81,9 @@ if __name__ == "__main__":
         print("Truncated:", truncated)
         print("Ground Truth:", info["ground_truth"])
         print("feature_names:", info["feature_names"])
+
+    bootstrap_obs, _ = env.get_bootstrap_observations(n_bootstrap=5)
+    baseline_pred = env.baseline(bootstrap_observations=bootstrap_obs)
+
+    print("\n=== Bootstrap Baseline Predictions ===")
+    print("Baseline predictions:", baseline_pred)

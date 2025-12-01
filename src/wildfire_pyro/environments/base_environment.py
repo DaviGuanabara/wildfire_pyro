@@ -12,13 +12,6 @@ class BaseEnvironment(Env, ABC):
     def __init__(self):
         self._context_handlers = {}
 
-    @abstractmethod
-    def baseline(self, bootstrap_observations: np.ndarray) -> np.ndarray:
-        """Returns a baseline prediction. Should be overridden if applicable.
-        it should return:
-        prediction"""
-        return np.array([])
-
     def render(self, mode: str = "human") -> Any:
         """
         Renders the environment.
@@ -81,6 +74,7 @@ class BaseEnvironment(Env, ABC):
     def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         pass
 
-    def bootstrap_baseline(self) -> np.ndarray:
-        return np.array([])
-    
+
+    @abstractmethod
+    def baseline(self, bootstrap_observations):
+        pass

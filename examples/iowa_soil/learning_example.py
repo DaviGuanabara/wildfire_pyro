@@ -1,3 +1,4 @@
+from wildfire_pyro.common.baselines.MeanNeighborBaseline import MeanNeighborBaseline
 import os
 import torch
 import numpy as np
@@ -47,9 +48,10 @@ logging_parameters = {
     "format_strings": ["csv", "tensorboard", "stdout"],
 }
 
+
 runtime_parameters = {
     "device": "cuda" if torch.cuda.is_available() else "cpu",
-    "seed": get_seed(f"run_{0}"),
+    "seed": get_seed("run_0"),
     "verbose": verbose,
 }
 
@@ -58,9 +60,9 @@ runtime_parameters = {
 # INSTANTIATION
 # ==================================================================================================
 
-train_environment = IowaEnvironment(data_path=train_data, verbose=verbose)
-validation_environment = IowaEnvironment(data_path=validation_data, verbose=verbose)
-test_environment = IowaEnvironment(data_path=test_data, verbose=verbose)
+train_environment = IowaEnvironment(data_path=train_data, verbose=verbose, baseline_type="mean_neighbor")
+validation_environment = IowaEnvironment(data_path=validation_data, verbose=verbose, baseline_type="mean_neighbor")
+test_environment = IowaEnvironment(data_path=test_data, verbose=verbose, baseline_type="mean_neighbor")
 
 eval_callback = BootstrapEvaluationCallback(
     validation_environment,

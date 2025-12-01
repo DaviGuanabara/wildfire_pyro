@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 import numpy as np
 from wildfire_pyro.environments.base_environment import BaseEnvironment
-from wildfire_pyro.environments.iowa.components.meta_data import Metadata
+from wildfire_pyro.environments.iowa.components.metadata import Metadata
 from wildfire_pyro.environments.iowa.components.dataset_adapter import (
     AdapterParams,
     DatasetAdapter,
@@ -9,9 +9,13 @@ from wildfire_pyro.environments.iowa.components.dataset_adapter import (
 from gymnasium import spaces
 
 
-class AdaptativeEnvironment(BaseEnvironment):
+from wildfire_pyro.common.baselines.BaselineFactory import BaselineFactory
 
-    def __init__(self, data_path, metadata: Metadata, params: AdapterParams):
+
+
+class ParametricEnvironment(BaseEnvironment):
+
+    def __init__(self, data_path, metadata: Metadata, params: AdapterParams, baseline_type: str = "mean_neighbor"):
         self.dataset_metadata: Metadata = metadata
         self.dataset_adapter = DatasetAdapter(
             data_path=data_path, metadata=metadata, params=params
@@ -21,11 +25,26 @@ class AdaptativeEnvironment(BaseEnvironment):
 
         self._compute_spaces()
 
+        self.baseline_model = BaselineFactory.create_baseline(
+            baseline_type=baseline_type,
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            scaler=self.dataset_adapter.scaler
+        )
+
+        self.baseline_type = baseline_type
+
+
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
         super().reset(seed=seed)
         
         self.dataset_adapter.reset(self.rng)
         sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.next()
+        self.neighbor_schema = self.dataset_adapter.neighbor_schema
+
+        self.neighbor_schema = self.dataset_adapter.neighbor_schema
+        self.baseline_model.set_schema(self.neighbor_schema)
+
 
         observation = {
             "neighbors": padded.astype(np.float32),
@@ -139,33 +158,15 @@ class AdaptativeEnvironment(BaseEnvironment):
         self.last_observations = obs_list  
         self.last_ground_truths = ground_truths
         return obs_list, ground_truths
-    
-    def baseline(
-        self, observations: list[dict[str, np.ndarray]]
-    ) -> np.ndarray:
-        """
-        Compute a baseline prediction over the given observations.
 
-        Args:
-            observations: list of dicts matching observation_space.
-                        Each dict must contain keys 'neighbors' and 'mask'.
+    # -------------------------------------------------
+    # BASELINE — FINAL VERSION
+    # -------------------------------------------------
+    def baseline(self, bootstrap_observations):
+        """
+        Compute baseline using the registered baseline strategy.
 
         Returns:
-            predictions: np.ndarray of shape (n_bootstrap, 1)
+            predictions: (n_bootstrap, action_dim)
         """
-
-        predictions = []
-
-        for obs in observations:
-            neighbors = obs["neighbors"]
-            mask = obs["mask"].astype(bool)
-
-
-            valid = neighbors[mask]
-
-            if valid.size == 0 or np.isnan(valid).all():
-                predictions.append(np.nan)
-            else:
-                predictions.append(np.nanmean(valid))
-
-        return np.array(predictions, dtype=np.float32).reshape(-1, 1)
+        return self.baseline_model.predict(bootstrap_observations)

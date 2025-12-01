@@ -17,7 +17,8 @@
 # all copies or substantial portions of the Software.
 # ========================================================================================
 
-
+from wildfire_pyro.common.baselines.BaselineStrategy import BaselineStrategy
+from wildfire_pyro.common.baselines.MeanNeighborBaseline import MeanNeighborBaseline
 from dataclasses import asdict
 from .logger import Logger
 import numpy as np
@@ -410,6 +411,7 @@ class BootstrapEvaluationCallback(EventCallback):
         # batch_obs = np.stack(bootstrap_observations)
         nn_predictions, _ = self.learner.predict(bootstrap_observations)
         baseline_prediction = self.evaluation_environment.baseline(bootstrap_observations)
+
 
         nn_errors = self._compute_errors(nn_predictions, ground_truths)
         #nn_std_errors = float(np.std(nn_errors))
