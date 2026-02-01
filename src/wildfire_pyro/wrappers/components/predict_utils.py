@@ -4,12 +4,16 @@ import numpy as np
 from typing import Union, Tuple, Optional
 
 
+from typing import Dict, Tuple
+
+
 def predict_model(
     neural_network: torch.nn.Module,
-    observation: np.ndarray,
+    observation: Dict[str, np.ndarray],
     device: str,
-    observation_space: Optional[spaces.Space] = None,
+    observation_space: spaces.Dict,
 ) -> Tuple[np.ndarray, dict]:
+
     """
     Performs forward pass with proper device handling and shape normalization.
 
@@ -35,26 +39,23 @@ def predict_model(
 
     neural_network.eval()
 
+
     with torch.no_grad():
         obs_tensor = to_obs_tensor(observation, observation_space, device)
 
-        # 🔹 Caso Dict → repassa direto pro modelo
-        if isinstance(obs_tensor, dict):
-            action_tensor = neural_network(obs_tensor)
-            if isinstance(action_tensor, tuple):
-                action_tensor = action_tensor[0]  # pega só as ações
-            action = action_tensor.cpu().numpy()
+        action_tensor = neural_network(obs_tensor)
+        if isinstance(action_tensor, tuple):
+            action_tensor = action_tensor[0]
 
-        else:  # 🔹 Caso Box → tensor único
-            action_tensor = neural_network(obs_tensor)
-            if isinstance(action_tensor, tuple):
-                action_tensor = action_tensor[0]
-            action = action_tensor.cpu().numpy()
-
+        action = action_tensor.cpu().numpy()
         return action, {}
 
 
-def to_obs_tensor(observation, observation_space, device):
+def to_obs_tensor(
+    observation: Dict[str, np.ndarray],
+    observation_space: spaces.Dict,
+    device: str,
+) -> Dict[str, torch.Tensor]:
     """
     Converte observação (dict, lista de dicts ou array) em tensores com batch.
     Usa o observation_space para verificar consistência dinamicamente.
@@ -65,45 +66,16 @@ def to_obs_tensor(observation, observation_space, device):
     #print("observation_space type:", type(observation_space))
     #print("observation_space:", observation_space)
     # Caso Dict space
-    if isinstance(observation_space, spaces.Dict):
+    out = {}
+    for k, sp in observation_space.spaces.items():
+        t = torch.as_tensor(
+            observation[k], dtype=torch.float32, device=device
+        )
 
-        # 🔹 Se receber lista de dicionários → empilhar por chave
-        if isinstance(observation, list) and isinstance(observation[0], dict):
-            out = {}
-            for k, sp in observation_space.spaces.items():
-                stacked = torch.as_tensor(
-                    np.stack([obs[k] for obs in observation], axis=0),
-                    dtype=torch.float32,
-                    device=device,
-                )
-                out[k] = stacked
-            return out
-
-        # 🔹 Se receber dict único
-        elif isinstance(observation, dict):
-            out = {}
-            for k, sp in observation_space.spaces.items():
-                t = torch.as_tensor(
-                    observation[k], dtype=torch.float32, device=device)
-                if t.ndim == len(sp.shape): #type: ignore
-                    t = t.unsqueeze(0)  # adiciona batch
-                out[k] = t
-            return out
-
-        else:
-            raise ValueError(
-                f"Esperado dict ou lista de dicts, mas recebi {type(observation)}")
-
-    # Caso Box space
-    elif isinstance(observation_space, spaces.Box):
-        t = torch.as_tensor(observation, dtype=torch.float32, device=device)
-        if t.ndim == len(observation_space.shape):
+        # Ensure batch dimension
+        if t.ndim == len(sp.shape):  # type: ignore
             t = t.unsqueeze(0)
-        return t
 
-    else:
-        # fallback genérico
-        t = torch.as_tensor(observation, dtype=torch.float32, device=device)
-        if t.ndim == 1:
-            t = t.unsqueeze(0)
-        return t
+        out[k] = t
+
+    return out

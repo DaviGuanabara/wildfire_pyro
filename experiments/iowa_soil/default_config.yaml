@@ -1,0 +1,24 @@
+data:
+  train_path: data/train.csv
+  validation_path: data/val.csv
+  test_path: data/test.csv
+
+logging:
+  format_strings:
+    - csv
+    - stdout
+    - tensorboard
+
+training:
+  total_timesteps: 200000
+  use_validation: false
+  eval_freq: null
+  log_frequency: 5000
+
+evaluation:
+  n_eval: 5
+  n_bootstrap: 2
+
+runtime:
+  device: cuda
+  verbose: false

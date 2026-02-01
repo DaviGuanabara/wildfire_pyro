@@ -7,6 +7,9 @@ from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
 from wildfire_pyro.wrappers.components import predict_model
 
+from gymnasium import spaces
+from typing import cast
+
 
 class SupervisedLearningManager(BaseLearningManager):
     def __init__(
@@ -23,9 +26,10 @@ class SupervisedLearningManager(BaseLearningManager):
                          model_parameters=model_parameters)
 
 
-        
     def predict(
-        self, obs: np.ndarray, deterministic: bool = True
+        self,
+        obs: Dict[str, np.ndarray],
+        deterministic: bool = True,
     ) -> Tuple[np.ndarray, Any]:
         """
         Makes predictions using the trained model.
@@ -38,11 +42,13 @@ class SupervisedLearningManager(BaseLearningManager):
             Tuple[np.ndarray, Any]: Predicted action(s) and additional information (empty dict).
         """
 
+        observation_space = cast(
+            spaces.Dict, self.environment.observation_space)
         return predict_model(
             self.neural_network,
             obs,
             self.device,
-            observation_space=self.environment.observation_space,
+            observation_space=observation_space,
         )
 
     
@@ -99,7 +105,7 @@ class SupervisedLearningManager(BaseLearningManager):
         self.optimizer.step()
 
         self.loss: float = loss.item()
-        print(f"[INFO] Train Loss: {self.loss:.4f}")
+        #print(f"[INFO] Train Loss: {self.loss:.4f}")
 
         self._update_learning_rate()
 

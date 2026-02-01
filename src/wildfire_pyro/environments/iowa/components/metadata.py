@@ -9,3 +9,4 @@ class Metadata:
     id: str                   # "ID" (or other name)
     target: List[str]         # ["high", "low"] or other list
     features: List[str]       # features column
+    baseline: Optional[List[str]] = None

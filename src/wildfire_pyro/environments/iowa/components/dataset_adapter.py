@@ -24,9 +24,7 @@ class DatasetAdapter:
         self.metadata = metadata
         self.params = params
 
-        self.scaler = scaler or CustomScaler(self.params)
-
-        self.load_data(self.data_path, metadata)
+        self.load_data(self.data_path, scaler=scaler, metadata=metadata)
 
         self.reset(rng)
 
@@ -59,10 +57,23 @@ class DatasetAdapter:
 
         if metadata is not None:
             self.metadata = metadata
+
+            if metadata.baseline is not None:
+                if len(metadata.baseline) != len(metadata.target):
+                    raise ValueError(
+                        "baseline and target must have the same dimensionality "
+                        f"(got {len(metadata.baseline)} vs {len(metadata.target)})"
+                    )
+            
         elif not hasattr(self, "metadata"):
             raise ValueError("Metadata must be provided on first load.")
 
         self.validate(data, self.metadata)
+
+        data["valid"] = pd.to_datetime(
+            data["valid"]).map(pd.Timestamp.toordinal)
+
+
         self.data = self.sort_by_time(self.metadata, data)
         return self.data
 
@@ -81,7 +92,7 @@ class DatasetAdapter:
         return features, targets
     
     def load_data(
-        self, data_path: str, metadata: Optional[Metadata] = None
+        self, data_path: str, scaler: Optional[CustomScaler] = None, metadata: Optional[Metadata] = None
     ) -> pd.DataFrame:
         df = self._load_data(data_path, metadata)
         
@@ -95,7 +106,11 @@ class DatasetAdapter:
         # split features and targets
         features, targets = self._split_features_targets(df)
 
-        self.scaler.fit(features, targets)
+        if scaler is None:
+            scaler = CustomScaler(self.params)
+            scaler.fit(features, targets)
+
+        self.scaler: CustomScaler = scaler
         return df
 
 
@@ -197,6 +212,9 @@ class DatasetAdapter:
         delta_time, delta_pos = self._compute_deltas(row, neighbors)
 
         # Normalize using the CustomScaler — not hardcoded logic here
+        if self.scaler is None:
+            raise ValueError("Scaler must be initialized before normalizing deltas.")
+        
         delta_time_norm = self.scaler.normalize_delta_time(delta_time)
         delta_pos_norm = self.scaler.normalize_delta_pos(delta_pos)
 
@@ -215,6 +233,10 @@ class DatasetAdapter:
         self, formatted: pd.DataFrame, neighbors: pd.DataFrame
     ) -> Tuple[pd.DataFrame, List[str]]:
         
+        if self.scaler is None:
+            raise ValueError(
+                "Scaler must be initialized before adding targets.")
+        
         raw = neighbors[self.metadata.target].to_numpy(dtype=float)
         scaled = self.scaler.transform_target(raw)
         new_cols = []
@@ -225,6 +247,11 @@ class DatasetAdapter:
         return formatted, new_cols
 
     def _add_features(self, formatted: pd.DataFrame, neighbors: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+
+        if self.scaler is None:
+            raise ValueError(
+                "Scaler must be initialized before adding features.")
+        
         # 1) Extract raw feature matrix
         raw = neighbors[self.metadata.features].to_numpy(dtype=float)
 
@@ -326,14 +353,19 @@ class DatasetAdapter:
         return row[self.metadata.target].to_numpy(dtype=float)
     
     def normalize_observation(self, padded, ground_truth):
+
+        if self.scaler is None:
+            raise ValueError(
+                "Scaler must be initialized before normalizing observations.")
+
         # 🔹 Normalize features and targets
         padded_scaled = self.scaler.transform_features(padded)
         ground_truth_scaled  = self.scaler.transform_target(ground_truth)
 
         return padded_scaled, ground_truth_scaled
 
-    def _save_last_data(self, sample, padded_scaled, mask, feature_names, ground_truth_scaled):
-        self.last_sample = sample
+    def _save_last_data(self, sample: pd.Series, padded_scaled, mask, feature_names, ground_truth_scaled):
+        self.last_sample: pd.Series = sample
         self.last_padded = padded_scaled
         self.last_mask = mask
         self.last_feature_names = feature_names
@@ -350,7 +382,26 @@ class DatasetAdapter:
         chosen_idx = self.rng.choice(time_slice.index)
         sample = time_slice.loc[chosen_idx]
         return sample
+    
+    def get_baseline(self) -> np.ndarray:
+        """
+        Return baseline prediction in the same (scaled) space as the target.
 
+        Returns:
+            np.ndarray: baseline values
+            Baseline prediction in the same (scaled) space as the target.
+        """
+
+        if self.metadata.baseline is None:
+            raise ValueError("Metadata baseline columns are not defined.")
+        
+        baseline_raw = self.last_sample[self.metadata.baseline].to_numpy(dtype=float)
+
+        baseline_scaled = self.scaler.transform_target(
+            baseline_raw.reshape(1, -1)
+        ).flatten()
+
+        return baseline_scaled
 
 
     def _read(self, cursor) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
@@ -360,6 +411,11 @@ class DatasetAdapter:
         Normalizes features and targets using the configured scaler.
         """
 
+        if self.scaler is None:
+            raise ValueError(
+                "Scaler must be initialized before transform targets.")
+        
+        
         # Verifica antes de ler
         if self.cursor >= len(self.unique_times) - 1:
             self.done = True
@@ -386,7 +442,6 @@ class DatasetAdapter:
 
 
     def read_resample_neighbors(self):
-        
         return self._read(self.cursor)
 
     def next(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
@@ -412,7 +467,7 @@ if __name__ == "__main__":
     # ⚠️ Preencha com o caminho real do seu CSV
     # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
     #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\src\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
-    data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
+    data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\daily\\processed\\dataset_with_baseline.csv"
 
 
 
@@ -449,9 +504,7 @@ if __name__ == "__main__":
     for _i in range(256):
         sample, padded, mask, feature_names, ground_truth, done = adapter.next()
 
-    #print("\n=== Sample (row) ===")
-    #print(sample)
-    
+
     print("\n=== Padded neighbors ===")
     print(feature_names)
     print(padded)

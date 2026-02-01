@@ -32,7 +32,7 @@ class MLPBlock(nn.Module):
         activation_function=None,
         use_dropout=False,
         prob=0.1,
-    ):
+    ):  
         super(MLPBlock, self).__init__()
         self.batch_norm = nn.BatchNorm1d(num_features=in_features)
         self.linear = nn.Linear(in_features, out_features, bias=False)

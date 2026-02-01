@@ -1,17 +1,20 @@
+from typing import Optional
 import numpy as np
 from wildfire_pyro.environments.iowa.components.adapter_params import AdapterParams
+from wildfire_pyro.environments.iowa.components.custom_scale import CustomScaler
 from wildfire_pyro.environments.iowa.components.metadata import Metadata
 from wildfire_pyro.environments.iowa.parametric_environment import ParametricEnvironment
 
 
 
 class IowaEnvironment(ParametricEnvironment):
-    def __init__(self, data_path, verbose: bool = False, baseline_type="mean_neighbor"):
+    def __init__(self, data_path, verbose: bool = False, baseline_type="mean_neighbor",
+                 scaler: Optional[CustomScaler] = None):
 
         metadata = self._metadata()
         params = self._params(verbose)
 
-        super().__init__(data_path=data_path, metadata=metadata, params=params, baseline_type=baseline_type)
+        super().__init__(data_path=data_path, metadata=metadata, params=params, baseline_type=baseline_type, scaler=scaler)
 
     def _params(self, verbose: bool) -> AdapterParams:
         return AdapterParams(
@@ -39,9 +42,11 @@ class IowaEnvironment(ParametricEnvironment):
                 "in_gust",
                 "in_et",  # evapotranspiration
                 "Elevation [m]",  # elevation
+                "out_bpres_avg",  # barometric pressure
             ],
             # , "out_lwmwet_2_tot"]  # colunas alvo
             target=["out_lwmwet_1_tot"],
+            baseline=["baseline"]
         )
 
 
@@ -51,10 +56,12 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # ⚠️ Preencha com o caminho real do seu CSV de treino
-    data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
-    data_path_mac = "/Users/Davi/Documents/GitHub/wildfire_workspace/wildfire/examples/iowa_soil/data/train.csv"
-    data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
-    data_path = data_path_mac
+    #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
+    #data_path_mac = "/Users/Davi/Documents/GitHub/wildfire_workspace/wildfire/examples/iowa_soil/data/train.csv"
+    #data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
+
+    data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\daily\\processed\\dataset_with_baseline.csv"
+    data_path = data_path_windows
     # Instancia o ambiente
     env = IowaEnvironment(data_path=data_path_windows, verbose=True)
 
@@ -69,9 +76,14 @@ if __name__ == "__main__":
 
     # Executa alguns passos
     print("\n=== Step Environment ===")
+
+    scaler = env.get_fitted_scaler()
     for step_id in range(3):
 
         obs, reward, terminated, truncated, info = env.step()
+        
+        raw_ground_truth = scaler.inverse_transform_target(info["ground_truth"])
+        raw_baseline = scaler.inverse_transform_target(env.get_baseline())
 
         print(f"\nStep {step_id + 1}")
         print("Observation[neighbors] shape:", obs["neighbors"].shape)
@@ -79,11 +91,12 @@ if __name__ == "__main__":
         print("Reward:", reward)
         print("Terminated:", terminated)
         print("Truncated:", truncated)
-        print("Ground Truth:", info["ground_truth"])
+        print("Ground Truth:", info["ground_truth"], raw_ground_truth, "min")
+        print("Baseline:", env.get_baseline(), raw_baseline, "min")
         print("feature_names:", info["feature_names"])
 
-    bootstrap_obs, _ = env.get_bootstrap_observations(n_bootstrap=5)
-    baseline_pred = env.baseline(bootstrap_observations=bootstrap_obs)
+    bootstrap_obs, _,  bootstrap_baseline = env.get_bootstrap_observations(n_bootstrap=5)
+    baseline_pred = env.get_baseline()
 
     print("\n=== Bootstrap Baseline Predictions ===")
     print("Baseline predictions:", baseline_pred)

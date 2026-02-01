@@ -71,10 +71,19 @@ class BaseEnvironment(Env, ABC):
     
 
     @abstractmethod
-    def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         pass
 
 
     @abstractmethod
-    def baseline(self, bootstrap_observations):
+    def get_baseline(self):
         pass
+    
+    @abstractmethod
+    def to_raw_target(self, y: np.ndarray) -> np.ndarray:
+        """
+        Optional hook.
+        Converts model-space targets to raw units (e.g. minutes).
+        Default: identity.
+        """
+        return y

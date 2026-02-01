@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 import numpy as np
 from wildfire_pyro.environments.base_environment import BaseEnvironment
+from wildfire_pyro.environments.iowa.components.custom_scale import CustomScaler
 from wildfire_pyro.environments.iowa.components.metadata import Metadata
 from wildfire_pyro.environments.iowa.components.dataset_adapter import (
     AdapterParams,
@@ -15,10 +16,11 @@ from wildfire_pyro.common.baselines.BaselineFactory import BaselineFactory
 
 class ParametricEnvironment(BaseEnvironment):
 
-    def __init__(self, data_path, metadata: Metadata, params: AdapterParams, baseline_type: str = "mean_neighbor"):
+    def __init__(self, data_path, metadata: Metadata, params: AdapterParams, baseline_type: str = "mean_neighbor",
+                 scaler: Optional[CustomScaler] = None):
         self.dataset_metadata: Metadata = metadata
         self.dataset_adapter = DatasetAdapter(
-            data_path=data_path, metadata=metadata, params=params
+            data_path=data_path, metadata=metadata, params=params, scaler=scaler
         )
 
         self.verbose = params.verbose
@@ -34,6 +36,8 @@ class ParametricEnvironment(BaseEnvironment):
 
         self.baseline_type = baseline_type
 
+    def get_fitted_scaler(self) -> CustomScaler:
+        return self.dataset_adapter.scaler
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
         super().reset(seed=seed)
@@ -94,7 +98,7 @@ class ParametricEnvironment(BaseEnvironment):
     def step(self, action: Optional[Any] = None) -> tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         
         sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.next()
-
+    
         if terminated and self.verbose == True:
             print("Episode terminated.")
             
@@ -105,7 +109,6 @@ class ParametricEnvironment(BaseEnvironment):
             "mask": mask.astype(np.int8),
         }
 
-        #print("Step - neighbors:", observation["neighbors"], "mask:", observation["mask"])
         info = {
             "sample": sample,
             "feature_names": feature_names,
@@ -116,10 +119,21 @@ class ParametricEnvironment(BaseEnvironment):
         truncated = False
 
         return observation, reward, terminated, truncated, info
+    
+    def get_baseline(self):
+        """
+        Return the baseline values for the current sample.
+
+        Returns:
+            np.ndarray: baseline values
+        """
+        baseline_values = self.dataset_adapter.get_baseline()
+        return baseline_values.astype(np.float32)
+    
 
     def get_bootstrap_observations(
         self, n_bootstrap: int, force_recompute: bool = True
-    ) -> tuple[list[dict[str, np.ndarray]], np.ndarray]:
+    ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
         """
         Return a batch of bootstrap observations and their ground truth values.
 
@@ -132,41 +146,34 @@ class ParametricEnvironment(BaseEnvironment):
                 - observations: list of dicts with keys matching observation_space
                 - ground_truths: array (n_bootstrap, T) with targets
         """
-        if force_recompute:
-            self.dataset_adapter.reset(self.rng)
-
-        obs_list = []
+        obs_neighbors = []
+        obs_masks = []
         gt_list = []
+        baseline_list = []
 
         for _ in range(n_bootstrap):
-            sample, padded, mask, feature_names, ground_truth, terminated = self.dataset_adapter.read_resample_neighbors()
+            sample, padded, mask, feature_names, ground_truth, terminated = (
+                self.dataset_adapter.read_resample_neighbors()
+            )
 
-            # 🔹 Cada observação vira um dict compatível com observation_space
-            obs_dict = {
-                "neighbors": padded.astype(np.float32),
-                "mask": mask.astype(np.float32),
-            }
-
-            obs_list.append(obs_dict)
+            obs_neighbors.append(padded.astype(np.float32))
+            obs_masks.append(mask.astype(np.float32))
             gt_list.append(ground_truth.astype(np.float32))
+            baseline_list.append(
+                self.dataset_adapter.get_baseline().astype(np.float32))
 
             if terminated:
-                break  # dataset acabou
+                break
+
+        observations = {
+            "neighbors": np.stack(obs_neighbors, axis=0),
+            "mask": np.stack(obs_masks, axis=0),
+        }
 
         ground_truths = np.stack(gt_list, axis=0)
+        bootstrap_baseline = np.stack(baseline_list, axis=0)
 
-        self.last_observations = obs_list  
-        self.last_ground_truths = ground_truths
-        return obs_list, ground_truths
+        return observations, ground_truths, bootstrap_baseline
 
-    # -------------------------------------------------
-    # BASELINE — FINAL VERSION
-    # -------------------------------------------------
-    def baseline(self, bootstrap_observations):
-        """
-        Compute baseline using the registered baseline strategy.
-
-        Returns:
-            predictions: (n_bootstrap, action_dim)
-        """
-        return self.baseline_model.predict(bootstrap_observations)
+    def to_raw_target(self, y: np.ndarray) -> np.ndarray:
+        return self.dataset_adapter.scaler.inverse_transform_target(y)

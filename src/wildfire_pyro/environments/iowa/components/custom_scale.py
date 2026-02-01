@@ -22,7 +22,9 @@ class CustomScaler:
         self.target_scaler.fit(targets)
 
     def transform_features(self, neighborhood: np.ndarray) -> np.ndarray:
-    
+        
+        if neighborhood.size == 0:
+            return neighborhood.reshape(0, self.feature_scaler.mean_.shape[0]) #type: ignore
         return self.feature_scaler.transform(neighborhood)
 
     def transform_target(self, targets: np.ndarray) -> np.ndarray:
@@ -30,6 +32,10 @@ class CustomScaler:
         targets: shape (num_neighbors, n_targets)
         """
         #return self.target_scaler.transform(target.reshape(1, -1)).flatten()
+
+        if targets.size == 0:
+            return targets.reshape(0, self.target_scaler.mean_.shape[0]) #type: ignore
+        
         return self.target_scaler.transform(targets)
     
     

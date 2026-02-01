@@ -1,3 +1,4 @@
+from dataclasses import asdict
 import torch
 import numpy as np
 from typing import Any, Dict, Tuple
@@ -10,6 +11,8 @@ from wildfire_pyro.wrappers.supervised_learning_manager import (
     SupervisedLearningManager,
     BaseLearningManager,
 )
+
+from wildfire.experiments.iowa_soil.config import RunConfig
 
 
 def create_deep_set_learner(
@@ -43,6 +46,31 @@ def create_deep_set_learner(
         logging_parameters=logging_parameters,
         runtime_parameters=runtime_parameters,
         model_parameters=model_parameters,
+    )
+
+    return learner
+
+
+def create_deep_set_learner_from_run_config(
+    env: BaseEnvironment,
+    config: RunConfig
+) -> SupervisedLearningManager:
+
+
+    neural_network = DeepSetAttentionNet(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        hidden_dim=config.model_parameters.hidden,
+        prob=config.model_parameters.dropout_prob,
+
+    ).to(config.runtime_parameters.device)
+
+    learner = SupervisedLearningManager(
+        neural_network=neural_network,
+        environment=env,
+        logging_parameters=asdict(config.logging_parameters),
+        runtime_parameters=asdict(config.runtime_parameters),
+        model_parameters=asdict(config.model_parameters),
     )
 
     return learner

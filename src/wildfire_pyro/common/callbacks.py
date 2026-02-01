@@ -20,6 +20,8 @@
 from wildfire_pyro.common.baselines.BaselineStrategy import BaselineStrategy
 from wildfire_pyro.common.baselines.MeanNeighborBaseline import MeanNeighborBaseline
 from dataclasses import asdict
+
+from wildfire_pyro.common.evaluator import BootstrapEvaluator
 from .logger import Logger
 import numpy as np
 from typing import TYPE_CHECKING, Any, Callable, Optional, List
@@ -296,7 +298,9 @@ class EventCallback(BaseCallback):
         return True
 
     def _on_step(self) -> bool:
-        return True
+        #return True
+        # TODO: FIZ ESSA MUDANÇA. TALVEZ DEVA VOLTAR ATRÁS.
+        return self._on_event()
 
 
 class BootstrapEvaluationCallback(EventCallback):
@@ -354,87 +358,15 @@ class BootstrapEvaluationCallback(EventCallback):
             self.logger.dump(0)
 
     def _evaluate_learner(self) -> EvaluationMetrics:
-        """Evaluates the learner using the error function."""
-
-        seed_key = f"bootstrap_eval_t{self.num_timesteps}"
-        self.seed = get_seed_manager().get_seed(seed_key)
-
-        self.evaluation_environment.reset(self.seed)
-
-        nn_mean_errors = []
-        baseline_mean_errors = []
-        comparisons = []
-
-        for _ in range(self.n_eval):
-            nn_errors, baseline_errors = self.bootstrap_evaluation(self.n_bootstrap)
-
-            nn_mean_errors.append(np.mean(nn_errors))
-            baseline_mean_errors.append(np.mean(baseline_errors))
-            comparisons.append(int(np.mean(nn_errors) < np.mean(baseline_errors)))
-
-        # print(model_errors)
-        mean_model_error = np.mean(nn_mean_errors)
-        std_model_error = np.std(nn_mean_errors)
-        mean_baseline_error = np.mean(baseline_mean_errors)
-        std_baseline_error = np.std(baseline_mean_errors)
-
-        # Model Over Baseline
-        # This metric quantifies the win rate of the model over the baseline.
-        comparison = np.mean(comparisons, dtype=np.float32)
-        self.comparison_history.append(comparison)
-
-        if len(self.comparison_history) > self.rolling_window_size:
-            self.comparison_history.pop(0)
-
-        model_win_rate = np.mean(self.comparison_history)
-
-        # Data flow
-        results = EvaluationMetrics(
-            model_error=float(mean_model_error),
-            model_std=float(std_model_error),
-            baseline_error=float(mean_baseline_error),
-            baseline_std=float(std_baseline_error),
-                               model_win_rate_over_baseline=float(model_win_rate),
+        evaluator = BootstrapEvaluator(
+            environment=self.evaluation_environment,
+            learner=self.learner,
+            n_eval=self.n_eval,
+            n_bootstrap=self.n_bootstrap,
+            error_function=self.error_function,
+            seed=self.seed,
         )
-
-        self.evaluation_environment.step()
-
-        return results
-
-    def bootstrap_evaluation(self, n_bootstrap):
-        """Performs a single bootstrap evaluation."""
-        bootstrap_observations, ground_truths = (
-            self.evaluation_environment.get_bootstrap_observations(n_bootstrap)
-        )
-
-        # shape: (n_bootstrap, n_neighbors, input_dim + 1)
-        # batch_obs = np.stack(bootstrap_observations)
-        nn_predictions, _ = self.learner.predict(bootstrap_observations)
-        baseline_prediction = self.evaluation_environment.baseline(bootstrap_observations)
-
-
-        nn_errors = self._compute_errors(nn_predictions, ground_truths)
-        #nn_std_errors = float(np.std(nn_errors))
-
-        baseline_errors = self._compute_errors(baseline_prediction, ground_truths)
-        #baseline_std_errors = float(np.std(baseline_errors))
-
-        return nn_errors, baseline_errors
-
-    def _compute_errors(self, prediction, ground_truth) -> float:
-        # Handle both PyTorch losses and custom functions
-
-        pred_tensor = torch.tensor(prediction, dtype=torch.float32)
-        gt_tensor = torch.tensor(ground_truth, dtype=torch.float32)
-
-        if isinstance(self.error_function, torch.nn.modules.loss._Loss):
-            error = self.error_function(pred_tensor, gt_tensor)
-            error = error.item() if isinstance(error, torch.Tensor) else float(error)
-
-        else:
-            error = self.error_function(prediction, ground_truth)
-
-        return error
+        return evaluator.evaluate()
 
     def _on_step(self) -> bool:
         """Runs evaluation and logs results."""
@@ -453,16 +385,40 @@ class BootstrapEvaluationCallback(EventCallback):
 
     def _log_to_logger(self, results: EvaluationMetrics):
 
-        self.logger.record("eval/loss", results.model_error)
+        # --- baseline (normalizado) ---
+        self.logger.record(
+            "val/baseline_loss_bootstrap",
+            results.baseline_error,
+            exclude=("tensorboard",)
+        )
+        self.logger.record(
+            "val/baseline_loss_bootstrap_std",
+            results.baseline_std,
+            exclude=("tensorboard",),
+        )
 
-        self.logger.record("eval/std_error",
-                           results.model_std, exclude=("tensorboard",))
+        # --- normalizado ---
+        self.logger.record("val/loss_bootstrap", results.model_error)
+        self.logger.record(
+            "val/loss_bootstrap_std",
+            results.model_std,
+            exclude=("tensorboard",),
+        )
+
+        # --- raw (interpretável) ---
+        if results.model_mae_raw is not None:
+            self.logger.record("val/mae_raw_minutes", results.model_mae_raw)
+            self.logger.record("val/rmse_raw_minutes", results.model_rmse_raw)
+
+        if results.baseline_mae_raw is not None:
+            self.logger.record("val/baseline_mae_raw_minutes",
+                            results.baseline_mae_raw)
+            self.logger.record("val/baseline_rmse_raw_minutes",
+                            results.baseline_rmse_raw)
 
         if results.has_baseline():
-            self.logger.record("eval/baseline_error", results.baseline_error)
-            self.logger.record("eval/baseline_std",
-                               results.baseline_std, exclude=("tensorboard",))
-            self.logger.record("eval/win_rate_over_baseline", results.model_win_rate_over_baseline)
+            self.logger.record("eval/win_rate_over_baseline",
+                            results.model_win_rate_over_baseline)
 
         self.logger.record("time/total_timesteps", self.num_timesteps)
         self.logger.dump(self.num_timesteps)
@@ -500,6 +456,10 @@ class TrainLoggingCallback(BaseCallback):
             return True  # no loss yet
 
         loss_value = float(getattr(self.learner, "loss", np.nan))
+
+        if not np.isfinite(loss_value):
+            return True
+
         self.loss_history.append(loss_value)
 
         # Log periodically
@@ -509,7 +469,7 @@ class TrainLoggingCallback(BaseCallback):
             self.logger.record("time/total_timesteps", self.num_timesteps)
             self.logger.dump(self.num_timesteps)
 
-            if self.verbose > 0:
-                print(
-                    f"[TrainLoggingCallback] step={self.num_timesteps} | avg_loss={avg_loss:.4f}")
+            #if self.verbose > 0:
+            #   print(
+            #        f"[TrainLoggingCallback] step={self.num_timesteps} | avg_loss={avg_loss:.4f}")
         return True
