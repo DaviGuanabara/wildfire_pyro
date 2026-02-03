@@ -5,63 +5,7 @@ from pathlib import Path
 import torch
 import yaml
 
-
-# =========================
-# Dataclasses
-# =========================
-
-@dataclass(frozen=True)
-class DataParameters:
-    train_path: str
-    validation_path: Optional[str]
-    test_path: str
-
-
-@dataclass(frozen=True)
-class RuntimeParameters:
-    seed: int
-    log_dir: str
-    verbose: bool
-    device: str
-
-
-@dataclass(frozen=True)
-class LoggingParameters:
-    log_path: str
-    format_strings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class ModelParameters:
-    lr: float
-    dropout_prob: float
-    hidden: int
-    batch_size: int
-
-
-@dataclass(frozen=True)
-class TrainingParameters:
-    total_timesteps: int
-    use_validation: bool
-    log_frequency: int
-    eval_freq: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class TestParameters:
-    n_bootstrap: int
-    n_eval: int
-
-
-@dataclass(frozen=True)
-class RunConfig:
-    data_parameters: DataParameters
-    runtime_parameters: RuntimeParameters
-    logging_parameters: LoggingParameters
-    model_parameters: ModelParameters
-    training_parameters: TrainingParameters
-    test_parameters: TestParameters
-
+from wildfire_pyro.factories.learner_factory import RunConfig, RuntimeParameters, LoggingParameters, ModelParameters, TrainingParameters, TestParameters, DataParameters
 
 # =========================
 # Builder

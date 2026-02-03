@@ -465,7 +465,22 @@ class TrainLoggingCallback(BaseCallback):
         # Log periodically
         if self.n_calls % self.log_freq == 0:
             avg_loss = np.mean(self.loss_history[-self.log_freq:])
-            self.logger.record("train/loss", avg_loss)
+            std_loss = np.std(self.loss_history[-self.log_freq:])
+
+            #raw_loss = self.learner.environment.to_raw_target(np.array([loss_value]))
+            #self.learner.environment
+
+            #self.logger.record("train/raw_loss", raw_loss)
+            self.logger.record("train/loss", loss_value)
+            self.logger.record("train/loss_avg", avg_loss)
+            self.logger.record("train/loss_std", std_loss)
+            
+
+            
+
+
+            
+
             self.logger.record("time/total_timesteps", self.num_timesteps)
             self.logger.dump(self.num_timesteps)
 

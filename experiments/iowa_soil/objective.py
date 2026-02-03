@@ -6,11 +6,12 @@ import numpy as np
 import optuna
 from wildfire_pyro.common.seed_manager import configure_seed_manager
 from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
-from wildfire_pyro.factories.learner_factory import create_deep_set_learner, create_deep_set_learner_from_run_config
+from wildfire_pyro.factories.learner_factory import create_deep_set_learner_from_run_config
 
-from wildfire.experiments.iowa_soil.config import RunConfig, build_run_config_from_yaml
-from wildfire.experiments.iowa_soil.run import run
+from config import build_run_config_from_yaml
+from run import run
 
+from wildfire_pyro.factories.learner_factory import RunConfig
 from pathlib import Path
 
 DEFAULT_CONFIG_PATH = (
@@ -124,18 +125,19 @@ def gen_environments_from_config(config: RunConfig):
 def objective(trial: optuna.Trial) -> float:
     start_time = time.time()
 
-    metrics_per_run = []
+    #metrics_per_run = []
+    N_RUNS = 1
+    model_maes = []
+    baseline_maes = []
 
-    for _ in range(10):
+    for i in range(N_RUNS):
 
         seed = gen_random_seed()
-
-        # ✅ ESSENCIAL: configurar SeedManager
         configure_seed_manager(seed)
 
         config = _build_config(
             trial=trial,
-            log_dir=f"logs/optuna/trial_{trial.number}",
+            log_dir=f"logs/optuna/trial_{trial.number}_{i}",
             seed=seed,
         )
 
@@ -153,15 +155,30 @@ def objective(trial: optuna.Trial) -> float:
             config=config,
         )
 
-        metrics_per_run.append(metrics.model_error)
+        #metrics_per_run.append(metrics.model_mae_raw)
+        model_maes.append(metrics.model_mae_raw)
+        baseline_maes.append(metrics.baseline_mae_raw)
 
-    mean_error = float(np.mean(metrics_per_run))
-    std_error = float(np.std(metrics_per_run))
+
+    model_mae_mean = float(np.mean(model_maes))
+    baseline_mae_mean = float(np.mean(baseline_maes))
+
+    if N_RUNS > 1:
+        model_mae_std = float(np.std(model_maes))
+        baseline_mae_std = float(np.std(baseline_maes))
+
+    else:
+        model_mae_std = np.nan
+        baseline_mae_std = np.nan
+
+
+    mae_gain = baseline_mae_mean - model_mae_mean
+    mae_gain_pct = mae_gain / baseline_mae_mean if baseline_mae_mean > 0 else np.nan
+
     elapsed = time.time() - start_time
 
     trial.set_user_attr("elapsed_time_sec", elapsed)
-    trial.set_user_attr("std_error", std_error)
-
+    trial.set_user_attr("model_mae_raw_std", model_mae_std)
     results_path = Path("logs/optuna/results.xlsx")
 
     append_trial_result_xlsx(
@@ -172,12 +189,24 @@ def objective(trial: optuna.Trial) -> float:
             "hidden": trial.params["hidden"],
             "dropout": trial.params["dropout"],
             "batch_size": trial.params["batch_size"],
-            "mean_error": mean_error,
-            "std_error": std_error,
+
+            # Model
+            "model_mae_raw": model_mae_mean,
+            "model_mae_raw_std": model_mae_std,
+
+            # Baseline
+            "baseline_mae_raw": baseline_mae_mean,
+            "baseline_mae_raw_std": baseline_mae_std,
+
+            # Comparison
+            "mae_gain": mae_gain,
+            "mae_gain_pct": mae_gain_pct,
+
             "elapsed_time_sec": elapsed,
-            "n_seeds": len(metrics_per_run),
+            "n_seeds": len(model_maes),
         },
     )
 
 
-    return mean_error
+
+    return model_mae_mean

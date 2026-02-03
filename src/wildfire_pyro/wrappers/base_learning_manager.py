@@ -370,7 +370,11 @@ class BaseLearningManager:
             if not continue_training:
                 break
 
-            self._train()
+            loss = self._train()
+            #self.logger.record("train/loss", loss)
+            #self.logger.dump(step=self.num_timesteps)
+            #self.dump_logs(iteration=self.num_timesteps)
+
             steps_completed += rollout_steps
 
         callback.on_training_end()
@@ -397,7 +401,7 @@ class BaseLearningManager:
         if iteration > 0:
             self.logger.record("time/iterations", iteration, exclude="tensorboard")
 
-        self.logger.record("time/fps", fps)
+        self.logger.record("time/fps", fps, exclude="tensorboard")
         self.logger.record(
             "time/time_elapsed", int(time_elapsed), exclude="tensorboard"
         )

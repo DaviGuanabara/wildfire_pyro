@@ -1,11 +1,11 @@
 from wildfire_pyro.common.messages import EvaluationMetrics
 from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager
+from wildfire_pyro.factories.learner_factory import RunConfig
+from train import train
+from evaluate import evaluate
 
-from wildfire.experiments.iowa_soil.train import train
-from wildfire.experiments.iowa_soil.evaluate import evaluate
 
-from wildfire.experiments.iowa_soil.config import RunConfig
 
 
 def run(

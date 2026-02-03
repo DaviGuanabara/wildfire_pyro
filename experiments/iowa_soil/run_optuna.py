@@ -2,7 +2,8 @@ import time
 import optuna
 from pathlib import Path
 
-from wildfire.experiments.iowa_soil.objective import objective
+from objective import objective
+
 
 
 def eta_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial):
@@ -35,7 +36,7 @@ def eta_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial):
 
 def run_optuna(
     *,
-    n_trials: int = 30,
+    n_trials: int = 10,
     study_name: str = "iowa_soil_optuna",
     storage_path: str = "logs/optuna/study.db",
     n_jobs: int = 1,

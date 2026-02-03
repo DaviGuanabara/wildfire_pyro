@@ -16,8 +16,11 @@ training:
   log_frequency: 5000
 
 evaluation:
-  n_eval: 5
-  n_bootstrap: 2
+  n_eval: 20
+  n_bootstrap: 20
+  #n_eval = quantas vezes você testa o modelo
+  #n_bootstrap = quantas amostras por teste
+  # sao 10 trials. está no código.
 
 runtime:
   device: cuda
