@@ -29,9 +29,10 @@ class SeedManager:
 _seed_manager: Optional[SeedManager] = None
 
 
-def configure_seed_manager(global_seed: int):
+def configure_seed_manager(global_seed: int) -> SeedManager:
     global _seed_manager
     _seed_manager = SeedManager(global_seed)
+    return _seed_manager
 
 
 def get_seed_manager() -> SeedManager:
@@ -43,7 +44,7 @@ def get_seed_manager() -> SeedManager:
 
 
 def get_global_seed() -> int:
-    return _seed_manager.global_seed
+    return _seed_manager.global_seed # type: ignore
 
 
 def get_seed(key: str) -> int:

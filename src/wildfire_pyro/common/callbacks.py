@@ -17,14 +17,14 @@
 # all copies or substantial portions of the Software.
 # ========================================================================================
 
-from wildfire_pyro.common.baselines.BaselineStrategy import BaselineStrategy
-from wildfire_pyro.common.baselines.MeanNeighborBaseline import MeanNeighborBaseline
+
+from typing import Optional
 from dataclasses import asdict
 
 from wildfire_pyro.common.evaluator import BootstrapEvaluator
 from .logger import Logger
 import numpy as np
-from typing import TYPE_CHECKING, Any, Callable, Optional, List
+from typing import TYPE_CHECKING, Any, Callable, Optional
 from abc import ABC, abstractmethod
 import warnings
 import os
@@ -307,134 +307,109 @@ class BootstrapEvaluationCallback(EventCallback):
     def __init__(
         self,
         evaluation_environment: BaseEnvironment,
-        error_function: Optional[Callable[[Any, Any], Any]] = None,
         n_eval: int = 5,
-        n_bootstrap: int = 4,
-        eval_freq: int = 1000,  # steps per evaluation (SB3-style)
+        n_bootstrap: int = 10,
+        eval_freq: int = 1000,
         best_model_save_path: Optional[str] = None,
-        verbose: int = False,
+        verbose: int = 0,
         seed: int = 42,
     ):
-        """
-        Callback to evaluate the learner using bootstrap sampling.
-        :param evaluation_environment: Environment used for evaluation.
-        :param error_function: Function to compute the error between predictions and ground truth.
-        :param n_eval int: Number of evaluation runs.
-        
-            Number of independent bootstrap evaluations per prediction point.
-            Each evaluation samples 'n_bootstrap' neighbors randomly.
-        :param n_bootstrap: Number of bootstrap samples to use for evaluation.
-        :param eval_freq: Frequency of evaluations in training steps.
-        :param best_model_save_path: Path to save the best model based on evaluation error.
-        :param verbose: Verbosity level (0 = no output, 1 = info, 2 = debug).
-        :param seed: Seed for random number generation.
-
-        
-        """
-
         super().__init__(verbose=verbose)
-        self.evaluation_environment: BaseEnvironment = evaluation_environment
-        self.error_function = error_function if error_function else torch.nn.MSELoss()
+
+        self.eval_env = evaluation_environment
         self.n_eval = n_eval
-        self.eval_freq = eval_freq
-        self.best_batch_error = np.inf  # Minimize error (not "loss")
         self.n_bootstrap = n_bootstrap
-
-        self.best_model_save_path = best_model_save_path
-
-        self.comparison_history: List[np.float32] = []
-        self.rolling_window_size = 100
+        self.eval_freq = eval_freq
         self.seed = seed
 
-        self._initial_log_done = False
+        self.best_model_save_path = best_model_save_path
+        self.best_mae = np.inf
 
+        self._initial_log_done = False
 
     def _init_callback(self) -> None:
         super()._init_callback()
 
         if not self._initial_log_done:
-            #self.logger.record("run/n_eval", self.n_eval)
-            #self.logger.record("run/n_bootstrap", self.n_bootstrap)
+            self.logger.record("eval/n_eval", self.n_eval)
+            self.logger.record("eval/n_bootstrap", self.n_bootstrap)
             self.logger.dump(0)
+            self._initial_log_done = True
 
     def _evaluate_learner(self) -> EvaluationMetrics:
         evaluator = BootstrapEvaluator(
-            environment=self.evaluation_environment,
+            environment=self.eval_env,
             learner=self.learner,
             n_eval=self.n_eval,
             n_bootstrap=self.n_bootstrap,
-            error_function=self.error_function,
             seed=self.seed,
         )
         return evaluator.evaluate()
 
     def _on_step(self) -> bool:
-        """Runs evaluation and logs results."""
         if self.eval_freq <= 0 or self.n_calls % self.eval_freq != 0:
             return True
 
-        results: EvaluationMetrics = self._evaluate_learner()
+        results = self._evaluate_learner()
 
-        if hasattr(self, "learner") and hasattr(self.learner, "update_eval_metrics"):
-            self.learner.update_eval_metrics(results) # type: ignore
+        if hasattr(self.learner, "update_eval_metrics"):
+            self.learner.update_eval_metrics(results)  # type: ignore
 
         self._log_to_logger(results)
+        self._save_best_model(results.model_mae_mean)
 
-        self._save_best_model(results.model_error)
         return True
 
     def _log_to_logger(self, results: EvaluationMetrics):
-
-        # --- baseline (normalizado) ---
+        # Bootstrap-aware decision metrics
         self.logger.record(
-            "val/baseline_loss_bootstrap",
-            results.baseline_error,
-            exclude=("tensorboard",)
+            "eval/model_mae_mean",
+            results.model_mae_mean,
         )
         self.logger.record(
-            "val/baseline_loss_bootstrap_std",
-            results.baseline_std,
+            "eval/model_mae_std",
+            results.model_mae_std,
             exclude=("tensorboard",),
         )
 
-        # --- normalizado ---
-        self.logger.record("val/loss_bootstrap", results.model_error)
         self.logger.record(
-            "val/loss_bootstrap_std",
-            results.model_std,
+            "eval/baseline_mae_mean",
+            results.baseline_mae_mean,
+        )
+        self.logger.record(
+            "eval/baseline_mae_std",
+            results.baseline_mae_std,
             exclude=("tensorboard",),
         )
 
-        # --- raw (interpretável) ---
-        if results.model_mae_raw is not None:
-            self.logger.record("val/mae_raw_minutes", results.model_mae_raw)
-            self.logger.record("val/rmse_raw_minutes", results.model_rmse_raw)
+        self.logger.record(
+            "eval/win_rate_over_baseline",
+            results.win_rate_over_baseline,
+        )
 
-        if results.baseline_mae_raw is not None:
-            self.logger.record("val/baseline_mae_raw_minutes",
-                            results.baseline_mae_raw)
-            self.logger.record("val/baseline_rmse_raw_minutes",
-                            results.baseline_rmse_raw)
-
-        if results.has_baseline():
-            self.logger.record("eval/win_rate_over_baseline",
-                            results.model_win_rate_over_baseline)
+        # Diagnostic (secondary)
+        self.logger.record(
+            "eval/model_rmse_mean",
+            results.model_rmse_mean,
+        )
+        self.logger.record(
+            "eval/baseline_rmse_mean",
+            results.baseline_rmse_mean,
+        )
 
         self.logger.record("time/total_timesteps", self.num_timesteps)
         self.logger.dump(self.num_timesteps)
 
-
-    def _save_best_model(self, model_error: float):
-
-        if model_error < self.best_batch_error:
-            if self.verbose > 0:
-                self.logger.record(
-                    "info", "New best model error achieved!", exclude=("csv", "tensorboard"))
-
+    def _save_best_model(self, model_mae: float):
+        if model_mae < self.best_mae:
             if self.best_model_save_path:
                 os.makedirs(self.best_model_save_path, exist_ok=True)
-                self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
-            self.best_batch_error = model_error
+                self.learner.save(
+                    os.path.join(self.best_model_save_path, "best_model")
+                )
+            self.best_mae = model_mae
+
+
 
 class TrainLoggingCallback(BaseCallback):
     """

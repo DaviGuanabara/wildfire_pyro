@@ -13,60 +13,6 @@ from wildfire_pyro.wrappers.supervised_learning_manager import (
 )
 
 
-@dataclass(frozen=True)
-class DataParameters:
-    train_path: str
-    validation_path: Optional[str]
-    test_path: str
-
-
-@dataclass(frozen=True)
-class RuntimeParameters:
-    seed: int
-    log_dir: str
-    verbose: bool
-    device: str
-
-
-@dataclass(frozen=True)
-class LoggingParameters:
-    log_path: str
-    format_strings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class ModelParameters:
-    lr: float
-    dropout_prob: float
-    hidden: int
-    batch_size: int
-
-
-@dataclass(frozen=True)
-class TrainingParameters:
-    total_timesteps: int
-    use_validation: bool
-    log_frequency: int
-    eval_freq: Optional[int] = None
-
-
-@dataclass(frozen=True)
-class TestParameters:
-    n_bootstrap: int
-    n_eval: int
-
-
-@dataclass(frozen=True)
-class RunConfig:
-    data_parameters: DataParameters
-    runtime_parameters: RuntimeParameters
-    logging_parameters: LoggingParameters
-    model_parameters: ModelParameters
-    training_parameters: TrainingParameters
-    test_parameters: TestParameters
-
-
-
 def create_deep_set_learner(
     env: BaseEnvironment,
     model_parameters: Dict[str, Any],
@@ -103,26 +49,4 @@ def create_deep_set_learner(
     return learner
 
 
-def create_deep_set_learner_from_run_config(
-    env: BaseEnvironment,
-    config: RunConfig
-) -> SupervisedLearningManager:
 
-
-    neural_network = DeepSetAttentionNet(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        hidden_dim=config.model_parameters.hidden,
-        prob=config.model_parameters.dropout_prob,
-
-    ).to(config.runtime_parameters.device)
-
-    learner = SupervisedLearningManager(
-        neural_network=neural_network,
-        environment=env,
-        logging_parameters=asdict(config.logging_parameters),
-        runtime_parameters=asdict(config.runtime_parameters),
-        model_parameters=asdict(config.model_parameters),
-    )
-
-    return learner

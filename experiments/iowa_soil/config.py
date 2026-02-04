@@ -1,106 +1,108 @@
+# config.py
 from dataclasses import dataclass
-from typing import Optional
 from pathlib import Path
-
 import torch
 import yaml
 
-from wildfire_pyro.factories.learner_factory import RunConfig, RuntimeParameters, LoggingParameters, ModelParameters, TrainingParameters, TestParameters, DataParameters
+from parameters import (
+    RunParameters,
+    RuntimeParameters,
+    LoggingParameters,
+    ModelParameters,
+    TrainingParameters,
+    TestParameters,
+    DataParameters,
+)
 
-# =========================
-# Builder
-# =========================
+DEFAULT_CONFIG_PATH = (
+    Path(__file__).parent / "default_config.yaml"
+).resolve()
 
-def build_run_config_from_yaml(
-    yaml_path: str,
-    *,
-    seed: int,
-    log_dir: str,
-    lr: float,
-    hidden: int,
-    batch_size: int,
-    dropout_prob: float,
-) -> RunConfig:
 
-    yaml_path_obj = Path(yaml_path).resolve()
-    base_dir = yaml_path_obj.parent
+@dataclass(frozen=True)
+class OptunaConfig:
+    n_trials: int
+    study_name: str
+    n_jobs: int
+    direction: str = "minimize"
 
-    if not yaml_path_obj.exists():
-        raise FileNotFoundError(f"Config file not found: {yaml_path_obj}")
 
-    with open(yaml_path_obj, "r", encoding="utf-8") as f:
+@dataclass(frozen=True)
+class LoadedConfig:
+    base_run_parameters: RunParameters
+    optuna: OptunaConfig
+
+
+def load_full_config(yaml_path: str) -> LoadedConfig:
+    with open(yaml_path, "r", encoding="utf-8") as f:
         spec = yaml.safe_load(f)
 
-    # ------------------------
-    # Runtime
-    # ------------------------
+    base_dir = Path(yaml_path).parent
+
+    runtime = spec["runtime"]
     runtime_parameters = RuntimeParameters(
-        seed=seed,
-        log_dir=log_dir,
-        verbose=spec["runtime"]["verbose"],
-        device=spec["runtime"].get(
-            "device",
-            "cuda" if torch.cuda.is_available() else "cpu",
-        ),
+        base_seed=runtime["base_seed"],
+        seed=runtime["base_seed"],   # inicial, será derivada depois
+        log_dir="",
+        verbose=runtime["verbose"],
+        device=runtime.get("device", "cpu")
     )
 
-    # ------------------------
-    # Logging
-    # ------------------------
+
     logging_parameters = LoggingParameters(
-        log_path=log_dir,
+        log_path="",
         format_strings=tuple(spec["logging"]["format_strings"]),
     )
 
-    # ------------------------
-    # Model
-    # ------------------------
     model_parameters = ModelParameters(
-        lr=lr,
-        hidden=hidden,
-        batch_size=batch_size,
-        dropout_prob=dropout_prob,
+        lr=0.0,
+        hidden=0,
+        batch_size=0,
+        dropout_prob=0.0,
     )
 
-    # ------------------------
-    # Training
-    # ------------------------
     training = spec["training"]
     training_parameters = TrainingParameters(
         total_timesteps=training["total_timesteps"],
         use_validation=training["use_validation"],
-        eval_freq=training["eval_freq"],
         log_frequency=training["log_frequency"],
+        eval_freq=training.get("eval_freq"),
     )
 
-    # ------------------------
-    # Evaluation
-    # ------------------------
     evaluation = spec["evaluation"]
     test_parameters = TestParameters(
         n_eval=evaluation["n_eval"],
         n_bootstrap=evaluation["n_bootstrap"],
     )
 
-    # ------------------------
-    # Data (paths resolvidos)
-    # ------------------------
     data = spec["data"]
     data_parameters = DataParameters(
         train_path=str((base_dir / data["train_path"]).resolve()),
         validation_path=(
             str((base_dir / data["validation_path"]).resolve())
-            if data.get("validation_path") is not None
-            else None
+            if data.get("validation_path") else None
         ),
         test_path=str((base_dir / data["test_path"]).resolve()),
     )
 
-    return RunConfig(
+    base_run_parameters = RunParameters(
+        data_parameters=data_parameters,
         runtime_parameters=runtime_parameters,
         logging_parameters=logging_parameters,
         model_parameters=model_parameters,
         training_parameters=training_parameters,
         test_parameters=test_parameters,
-        data_parameters=data_parameters,
+    )
+
+    optuna_spec = spec["optuna"]
+    optuna_config = OptunaConfig(
+        n_trials=optuna_spec["n_trials"],
+        study_name=optuna_spec["study_name"],
+        n_jobs=optuna_spec.get("n_jobs", 1),
+        direction=optuna_spec.get("direction", "minimize"),
+    )
+
+    return LoadedConfig(
+        base_run_parameters=base_run_parameters,
+        optuna=optuna_config,
     )

@@ -132,7 +132,7 @@ class ParametricEnvironment(BaseEnvironment):
     
 
     def get_bootstrap_observations(
-        self, n_bootstrap: int, force_recompute: bool = True
+        self, n_bootstrap: int
     ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
         """
         Return a batch of bootstrap observations and their ground truth values.
