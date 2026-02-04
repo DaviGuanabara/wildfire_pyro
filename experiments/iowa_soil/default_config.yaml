@@ -27,6 +27,8 @@ evaluation:
   # Number of evaluation pivots (distinct targets).
   # Each pivot corresponds to a different underlying ground-truth sample.
   # Controls population-level robustness.
+  # it is needed that n_eval > 1 for proper uncertainty estimation 
+  # (and for not break the code, an assert defends against n_eval < 2).
   n_bootstrap: 20
   # Number of bootstrap resamplings PER pivot.
   # Each resampling perturbs the local context while keeping the target fixed.
