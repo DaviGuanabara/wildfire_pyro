@@ -112,6 +112,10 @@ class BootstrapEvaluator:
         n_bootstrap: int,
         seed: int,
     ):
+        
+        assert n_eval > 1, "n_eval must greater than 1"
+        assert n_bootstrap > 1, "n_bootstrap must be greater than 1"
+
         self.env = environment
         self.learner = learner
         self.n_eval = n_eval
@@ -157,11 +161,12 @@ class BootstrapEvaluator:
         baseline_raw = self.env.to_raw_target(baseline)
 
         # shape: (n_bootstrap, ...)
-        model_maes = np.mean(np.abs(preds_raw - gt_raw), axis=1)
-        baseline_maes = np.mean(np.abs(baseline_raw - gt_raw), axis=1)
+        model_maes = np.abs(preds_raw - gt_raw.squeeze())
+        baseline_maes = np.abs(baseline_raw.squeeze() - gt_raw.squeeze())
 
-        model_rmses = np.sqrt(np.mean((preds_raw - gt_raw) ** 2, axis=1))
-        baseline_rmses = np.sqrt(np.mean((baseline_raw - gt_raw) ** 2, axis=1))
+        model_rmses = np.sqrt((preds_raw - gt_raw.squeeze()) ** 2)
+        baseline_rmses = np.sqrt((baseline_raw.squeeze() - gt_raw.squeeze()) ** 2)
+
 
         return (
             model_maes.tolist(),
@@ -277,3 +282,132 @@ class BootstrapEvaluator:
 
             win_rate_over_baseline=float(np.mean(wins)),
         )
+
+
+if __name__ == "__main__":
+    """
+    Debug / inspection entry point for BootstrapEvaluator.
+
+    This block is intentionally isolated from Optuna and Experiment logic.
+    Its purpose is to:
+      - Inspect tensor shapes
+      - Validate bootstrap contracts
+      - Observe prediction behavior under resampling
+    """
+
+    from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
+    from wildfire_pyro.factories.learner_factory import create_deep_set_learner
+    from wildfire_pyro.common.seed_manager import configure_seed_manager
+
+    # -----------------------------
+    # Configuration (explicit)
+    # -----------------------------
+    GLOBAL_SEED = 123456
+    N_EVAL = 2
+    N_BOOTSTRAP = 5
+
+    configure_seed_manager(GLOBAL_SEED)
+
+
+    model_parameters = {
+        "lr": 0.001,
+        "dropout_prob": 0.2,
+        "hidden": 64,
+        "batch_size": 256,
+    }
+
+
+    logging_parameters = {
+        "log_path": "/",
+        "format_strings": ["csv", "tensorboard", "stdout"],
+    }
+
+
+    runtime_parameters = {
+        "device": "cuda",
+        "seed": 42,
+        "verbose": True,
+    }
+
+    # -----------------------------
+    # Build environment & learner
+    # -----------------------------
+    env = IowaEnvironment(data_path="C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\experiments\\iowa_soil\\data\\test.csv")
+    
+
+    learner = create_deep_set_learner(env, model_parameters, logging_parameters, runtime_parameters)
+
+    evaluator = BootstrapEvaluator(
+        environment=env,
+        learner=learner,
+        n_eval=N_EVAL,
+        n_bootstrap=N_BOOTSTRAP,
+        seed=GLOBAL_SEED,
+    )
+
+    # -----------------------------
+    # Manual inspection
+    # -----------------------------
+    print("\n==============================")
+    print(" LOCAL BOOTSTRAP INSPECTION ")
+    print("==============================")
+
+    env.reset(GLOBAL_SEED)
+
+    obs, gt, baseline = env.get_bootstrap_observations(N_BOOTSTRAP)
+
+    print("\n[OBSERVATIONS]")
+    for k, v in obs.items():
+        print(f"  {k}: shape={v.shape}, dtype={v.dtype}")
+
+    print("\n[GROUND TRUTH]")
+    print("  gt.shape:", gt.shape)
+    print("  gt.dtype:", gt.dtype)
+    print("  gt sample:", gt[:3])
+
+    print("\n[BASELINE]")
+    print("  baseline.shape:", baseline.shape)
+    print("  baseline.dtype:", baseline.dtype)
+    print("  baseline sample:", baseline[:3])
+
+    preds, _ = learner.predict(obs)
+
+    preds_raw = env.to_raw_target(preds)
+    gt_raw = env.to_raw_target(gt)
+    baseline_raw = env.to_raw_target(baseline)
+
+    print("\n[PREDICTIONS]")
+    print("  preds_raw.shape:", preds_raw.shape)
+    print("  preds_raw.dtype:", preds_raw.dtype)
+    print("  preds_raw sample:", preds_raw[:3])
+
+    print("\n[DIFF CHECK]")
+    diff = preds_raw - gt_raw
+    print("  diff.shape:", diff.shape)
+    print("  diff.ndim:", diff.ndim)
+
+    if diff.ndim == 1:
+        print("  → Target is scalar per bootstrap (expected case)")
+    else:
+        print("  → Target is vectorial / temporal")
+
+    print("\n==============================")
+    print(" SINGLE PIVOT EVALUATION ")
+    print("==============================")
+
+    model_mae, baseline_mae, model_rmse, baseline_rmse, win = (
+        evaluator._evaluate_single_pivot()
+    )
+
+    print(f"model_mae     : {model_mae}")
+    print(f"baseline_mae  : {baseline_mae}")
+    print(f"model_rmse    : {model_rmse}")
+    print(f"baseline_rmse : {baseline_rmse}")
+    print(f"win           : {win}")
+
+    print("\n==============================")
+    print(f" FULL EVALUATOR (N_EVAL={N_EVAL}) ")
+    print("==============================")
+
+    metrics = evaluator.evaluate()
+    print(metrics)

@@ -7,6 +7,8 @@ class BaseEnvironment(Env, ABC):
     """
     Abstract base class for environments, inheriting from Gymnasium's Env.
     Child classes must implement the abstract methods and properties.
+
+    “The environment is responsible for guaranteeing semantic consistency of predictions, ground truth and baseline. The evaluator operates exclusively on validated, scalar targets.”
     """
 
     def __init__(self):
