@@ -19,9 +19,7 @@ class IowaEnvironmentExperiment:
 
     def setup(self):
         # Single source of randomness for the whole experiment
-        self.seed_manager = configure_seed_manager(
-            self.config.runtime_parameters.seed
-        )
+        self.seed_manager = configure_seed_manager(self.config.runtime_parameters.seed)
 
         # Environments
         self.train_env = IowaEnvironment(
@@ -59,9 +57,7 @@ class IowaEnvironmentExperiment:
 
         callbacks = CallbackList([train_callback])
 
-        self.train_env.reset(
-            self.seed_manager.get_seed("train")
-        )
+        self.train_env.reset(self.seed_manager.get_seed("train"))
 
         self.learner.learn(
             total_timesteps=self.config.training_parameters.total_timesteps,
@@ -72,9 +68,7 @@ class IowaEnvironmentExperiment:
         return self.learner
 
     def _test(self) -> EvaluationMetrics:
-        self.test_env.reset(
-            self.seed_manager.get_seed("test")
-        )
+        self.test_env.reset(self.seed_manager.get_seed("test"))
 
         evaluator = BootstrapEvaluator(
             environment=self.test_env,

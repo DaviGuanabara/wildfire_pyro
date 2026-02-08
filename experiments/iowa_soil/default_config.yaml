@@ -36,7 +36,7 @@ evaluation:
 
 runtime:
   base_seed: 123456
-  device: cuda
+  device: mps #cuda, cpu, 
   verbose: false
 
 
