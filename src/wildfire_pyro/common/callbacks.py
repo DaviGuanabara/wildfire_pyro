@@ -30,12 +30,9 @@ import warnings
 import os
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
-import torch
 
 from wildfire_pyro.common.messages import EvaluationMetrics
-from wildfire_pyro.common.seed_manager import get_seed_manager, get_global_seed
 
-import csv
 
 try:
     from tqdm import TqdmExperimentalWarning
@@ -165,8 +162,6 @@ class CallbackList(BaseCallback):
 
             if hasattr(self, "parent") and self.parent is not None:
                 callback.parent = self.parent  # Inherit parent if applicable
-
-            
 
     def _on_training_start(self) -> None:
         for callback in self.callbacks:
@@ -298,7 +293,7 @@ class EventCallback(BaseCallback):
         return True
 
     def _on_step(self) -> bool:
-        #return True
+        # return True
         # TODO: FIZ ESSA MUDANÇA. TALVEZ DEVA VOLTAR ATRÁS.
         return self._on_event()
 
@@ -307,20 +302,20 @@ class BootstrapEvaluationCallback(EventCallback):
     def __init__(
         self,
         evaluation_environment: BaseEnvironment,
+        seed: int,
         n_eval: int = 5,
         n_bootstrap: int = 10,
         eval_freq: int = 1000,
         best_model_save_path: Optional[str] = None,
         verbose: int = 0,
-        seed: int = 42,
     ):
         super().__init__(verbose=verbose)
+        self.seed = seed
 
         self.eval_env = evaluation_environment
         self.n_eval = n_eval
         self.n_bootstrap = n_bootstrap
         self.eval_freq = eval_freq
-        self.seed = seed
 
         self.best_model_save_path = best_model_save_path
         self.best_mae = np.inf
@@ -342,9 +337,9 @@ class BootstrapEvaluationCallback(EventCallback):
             learner=self.learner,
             n_eval=self.n_eval,
             n_bootstrap=self.n_bootstrap,
-            seed=self.seed,
         )
-        return evaluator.evaluate()
+
+        return evaluator.evaluate(self.seed)
 
     def _on_step(self) -> bool:
         if self.eval_freq <= 0 or self.n_calls % self.eval_freq != 0:
@@ -404,11 +399,8 @@ class BootstrapEvaluationCallback(EventCallback):
         if model_mae < self.best_mae:
             if self.best_model_save_path:
                 os.makedirs(self.best_model_save_path, exist_ok=True)
-                self.learner.save(
-                    os.path.join(self.best_model_save_path, "best_model")
-                )
+                self.learner.save(os.path.join(self.best_model_save_path, "best_model"))
             self.best_mae = model_mae
-
 
 
 class TrainLoggingCallback(BaseCallback):
@@ -439,27 +431,21 @@ class TrainLoggingCallback(BaseCallback):
 
         # Log periodically
         if self.n_calls % self.log_freq == 0:
-            avg_loss = np.mean(self.loss_history[-self.log_freq:])
-            std_loss = np.std(self.loss_history[-self.log_freq:])
+            avg_loss = np.mean(self.loss_history[-self.log_freq :])
+            std_loss = np.std(self.loss_history[-self.log_freq :])
 
-            #raw_loss = self.learner.environment.to_raw_target(np.array([loss_value]))
-            #self.learner.environment
+            # raw_loss = self.learner.environment.to_raw_target(np.array([loss_value]))
+            # self.learner.environment
 
-            #self.logger.record("train/raw_loss", raw_loss)
+            # self.logger.record("train/raw_loss", raw_loss)
             self.logger.record("train/loss", loss_value)
             self.logger.record("train/loss_avg", avg_loss)
             self.logger.record("train/loss_std", std_loss)
-            
-
-            
-
-
-            
 
             self.logger.record("time/total_timesteps", self.num_timesteps)
             self.logger.dump(self.num_timesteps)
 
-            #if self.verbose > 0:
+            # if self.verbose > 0:
             #   print(
             #        f"[TrainLoggingCallback] step={self.num_timesteps} | avg_loss={avg_loss:.4f}")
         return True

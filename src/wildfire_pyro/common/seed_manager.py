@@ -10,6 +10,9 @@ class SeedManager:
         self.cache = {}
 
     def get_seed(self, key: str) -> int:
+        """
+        Derive a deterministic seed from the global seed and a key.
+        """
         full_key = f"{self.global_seed}-{key}"
         digest = hashlib.sha256(full_key.encode()).hexdigest()
         return int(digest, 16) % (2**32 - 1)
@@ -44,7 +47,7 @@ def get_seed_manager() -> SeedManager:
 
 
 def get_global_seed() -> int:
-    return _seed_manager.global_seed # type: ignore
+    return _seed_manager.global_seed  # type: ignore
 
 
 def get_seed(key: str) -> int:

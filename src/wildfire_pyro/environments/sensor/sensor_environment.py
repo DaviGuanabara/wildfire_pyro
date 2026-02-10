@@ -44,7 +44,6 @@ class SensorEnvironment(BaseEnvironment):
         # Definir espaços de observação e ação
         self._define_spaces()
 
-
     def _define_spaces(self):
         """
         Define os espaços de observação e ação.
@@ -60,21 +59,20 @@ class SensorEnvironment(BaseEnvironment):
         )
 
     def reset(
-        self, seed: Optional[int] = None, options: Optional[dict] = None
+        self, seed: int, options: Optional[dict] = None
     ) -> Tuple[np.ndarray, dict]:
         """
         Reseta o ambiente para um novo episódio.
 
         Args:
-            seed (Optional[int]): Semente para randomização.
+            seed (int): Semente para randomização.
             options (Optional[dict]): Opções adicionais.
 
         Returns:
             Tuple[np.ndarray, dict]: Observação inicial e informações adicionais.
         """
 
-        super().reset(seed or 0)
-        self.sensor_manager.reset(seed or 0) #TODO Random seed ?
+        super().reset(seed=seed)
 
         self.current_step = 0
         observation, self.ground_truth = self._generate_observation()
@@ -124,7 +122,7 @@ class SensorEnvironment(BaseEnvironment):
         sensor_id = self.sensor_manager.state_tracker["current_sensor"]
         current_index = self.sensor_manager.state_tracker["current_time_index"]
 
-        if self.sensor_manager.cache["data_from_current_sensor"] is  None:
+        if self.sensor_manager.cache["data_from_current_sensor"] is None:
             logging.warning(
                 "No data available for the current sensor. Returning empty sensor info."
             )
@@ -134,7 +132,7 @@ class SensorEnvironment(BaseEnvironment):
                 "t": None,
                 "sensor_id": sensor_id,
             }
-        
+
         sensor_data = self.sensor_manager.cache["data_from_current_sensor"].iloc[
             current_index
         ]
@@ -195,7 +193,6 @@ class SensorEnvironment(BaseEnvironment):
 
         return observation, ground_truth
 
-
     def close(self):
         """
         Fecha o ambiente.
@@ -242,11 +239,11 @@ class SensorEnvironment(BaseEnvironment):
             )
         )
 
-
         # Preallocate the observation tensor with shape (n_bootstrap, n_neighbors_max, 5)
         # Each observation has 4 features (delta_x, delta_y, delta_t, y) + 1 binary mask column
         observations = np.zeros(
-            (n_bootstrap, self.n_neighbors_max, 5), dtype=np.float32)
+            (n_bootstrap, self.n_neighbors_max, 5), dtype=np.float32
+        )
 
         # Iterate over each set of neighbor deltas returned by the SensorManager
         for i, df in enumerate(bootstrap_deltas):
@@ -270,7 +267,6 @@ class SensorEnvironment(BaseEnvironment):
 
             # Assign the constructed observation into the main batch array
             observations[i] = obs
-
 
         return observations, ground_truth
 

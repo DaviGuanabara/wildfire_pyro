@@ -1,8 +1,8 @@
 import optuna
 from pathlib import Path
 
-from objective import objective
-from runtime_config import OPTUNA_CONFIG
+from objective import objective  # type: ignore
+from runtime_config import OPTUNA_CONFIG  # type: ignore
 
 
 def run_optuna():

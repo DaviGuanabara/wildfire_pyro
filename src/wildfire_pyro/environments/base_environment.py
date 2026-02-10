@@ -3,6 +3,7 @@ from gymnasium import Env
 from typing import Any, Tuple, Dict, Optional
 import numpy as np
 
+
 class BaseEnvironment(Env, ABC):
     """
     Abstract base class for environments, inheriting from Gymnasium's Env.
@@ -33,14 +34,14 @@ class BaseEnvironment(Env, ABC):
         pass
 
     def reset(
-        self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
+        self, seed: int, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[Any, Dict[str, Any]]:
         """
         Default implementation that sets the random seed.
         Subclasses should override this method to return actual observations.
 
         Args:
-            seed (int, optional): Random seed.
+            seed (int): Random seed.
             options (dict, optional): Additional reset options.
 
         Returns:
@@ -51,9 +52,10 @@ class BaseEnvironment(Env, ABC):
 
         return None, {}  # placeholder, subclasses devem sobrescrever
 
-
     @abstractmethod
-    def step(self, action: Optional[Any] = None) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
+    def step(
+        self, action: Optional[Any] = None
+    ) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         """
         Executes one time step within the environment.
 
@@ -70,17 +72,16 @@ class BaseEnvironment(Env, ABC):
         """
         pass
 
-    
-
     @abstractmethod
-    def get_bootstrap_observations(self, n_bootstrap: int, force_recompute: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_bootstrap_observations(
+        self, n_bootstrap: int, force_recompute: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         pass
-
 
     @abstractmethod
     def get_baseline(self):
         pass
-    
+
     @abstractmethod
     def to_raw_target(self, y: np.ndarray) -> np.ndarray:
         """

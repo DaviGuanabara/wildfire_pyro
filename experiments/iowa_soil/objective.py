@@ -24,20 +24,15 @@ def objective(trial: optuna.Trial) -> float:
     row = {
         "trial_number": trial.number,
         **trial.params,
-
         # Bootstrap-aware decision metrics
         "model_mae_mean": metrics.model_mae_mean,
         "model_mae_std": metrics.model_mae_std,
-
         "baseline_mae_mean": metrics.baseline_mae_mean,
         "baseline_mae_std": metrics.baseline_mae_std,
-
         "win_rate_over_baseline": metrics.win_rate_over_baseline,
-
         # Diagnostic
         "model_rmse_mean": metrics.model_rmse_mean,
         "baseline_rmse_mean": metrics.baseline_rmse_mean,
-
         "elapsed_time_sec": elapsed,
     }
 

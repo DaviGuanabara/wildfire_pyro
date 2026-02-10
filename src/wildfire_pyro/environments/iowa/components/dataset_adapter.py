@@ -14,28 +14,35 @@ logger = logging.getLogger("SensorManager")
 logger.setLevel(logging.INFO)
 
 
-
 class DatasetAdapter:
     "A component that maps a dataset to framework’s internal semantic model."
 
-    def __init__(self, data_path, metadata: Metadata, params: AdapterParams, rng: np.random.Generator = np.random.default_rng(),
-                 scaler: Optional[CustomScaler] = None):
+    def __init__(
+        self,
+        data_path,
+        metadata: Metadata,
+        params: AdapterParams,
+        scaler: Optional[CustomScaler] = None,
+    ):
         self.data_path = data_path
         self.metadata = metadata
         self.params = params
 
         self.load_data(self.data_path, scaler=scaler, metadata=metadata)
 
-        self.reset(rng)
+        # self.reset(rng)
 
-    def reset(self, rng: Optional[np.random.Generator] = None):
-        self.rng = rng or np.random.default_rng()
+    def reset(self, seed: int):
+        """Reset the adapter's internal state, including the random seed for reproducibility."""
+
+        self.rng = np.random.default_rng(seed)
         self._set_shapes()
 
-
         self.unique_times = np.sort(self.data[self.metadata.time].unique())
-        self.cursor = self.rng.integers(int(
-            self.params.max_delta_time), self.unique_times.size - int(self.params.max_delta_time))
+        self.cursor = self.rng.integers(
+            int(self.params.max_delta_time),
+            self.unique_times.size - int(self.params.max_delta_time),
+        )
 
         self.done = False
 
@@ -64,15 +71,13 @@ class DatasetAdapter:
                         "baseline and target must have the same dimensionality "
                         f"(got {len(metadata.baseline)} vs {len(metadata.target)})"
                     )
-            
+
         elif not hasattr(self, "metadata"):
             raise ValueError("Metadata must be provided on first load.")
 
         self.validate(data, self.metadata)
 
-        data["valid"] = pd.to_datetime(
-            data["valid"]).map(pd.Timestamp.toordinal)
-
+        data["valid"] = pd.to_datetime(data["valid"]).map(pd.Timestamp.toordinal)
 
         self.data = self.sort_by_time(self.metadata, data)
         return self.data
@@ -80,22 +85,29 @@ class DatasetAdapter:
     def _clean_data(self, data: pd.DataFrame) -> pd.DataFrame:
         # Substitui inf e NaN por 0.0 em todas as colunas numéricas
         numeric_cols = data.select_dtypes(include=[np.number]).columns
-        data[numeric_cols] = data[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        data[numeric_cols] = (
+            data[numeric_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        )
         return data
 
-    def _split_features_targets(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+    def _split_features_targets(
+        self, df: pd.DataFrame
+    ) -> Tuple[np.ndarray, np.ndarray]:
         feature_cols = self.metadata.features
-        #self.feature_cols = feature_cols
+        # self.feature_cols = feature_cols
         features = df[feature_cols].to_numpy(dtype=float)
         targets = df[self.metadata.target].to_numpy(dtype=float)
 
         return features, targets
-    
+
     def load_data(
-        self, data_path: str, scaler: Optional[CustomScaler] = None, metadata: Optional[Metadata] = None
+        self,
+        data_path: str,
+        scaler: Optional[CustomScaler] = None,
+        metadata: Optional[Metadata] = None,
     ) -> pd.DataFrame:
         df = self._load_data(data_path, metadata)
-        
+
         df = self._clean_data(df)
 
         if self.params.verbose:
@@ -112,7 +124,6 @@ class DatasetAdapter:
 
         self.scaler: CustomScaler = scaler
         return df
-
 
     def sort_by_time(self, metadata: Metadata, data: pd.DataFrame):
         return data.sort_values(by=metadata.time).reset_index(drop=True)
@@ -165,9 +176,15 @@ class DatasetAdapter:
         return candidates.loc[candidates.index < row_index]
 
     def random_choice(self, candidates):
+
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "Random number generator not initialized. Call reset(seed) before using this method."
+            )
+
         n_neighbors = self.rng.integers(
             low=self.params.min_neighborhood_size,
-            high=self.params.max_neighborhood_size + 1
+            high=self.params.max_neighborhood_size + 1,
         )
         k = min(n_neighbors, len(candidates))
 
@@ -181,16 +198,17 @@ class DatasetAdapter:
         self,
         row_index: int,
         row: pd.Series,
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
 
         candidates = self.data
         candidates = self.filter_by_index(candidates, row_index)
         candidates = self.filter_by_id(candidates, row)
         candidates = self.filter_by_time(candidates, row, self.params.max_delta_time)
-        candidates = self.filter_by_distance(candidates, row, self.params.max_delta_distance)
+        candidates = self.filter_by_distance(
+            candidates, row, self.params.max_delta_distance
+        )
 
         return self.random_choice(candidates)
-
 
     def _compute_deltas(
         self, row: pd.Series, neighbors: pd.DataFrame
@@ -208,13 +226,15 @@ class DatasetAdapter:
 
         return delta_time, delta_pos
 
-    def _add_deltas(self, formatted: pd.DataFrame, row: pd.Series, neighbors: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    def _add_deltas(
+        self, formatted: pd.DataFrame, row: pd.Series, neighbors: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, List[str]]:
         delta_time, delta_pos = self._compute_deltas(row, neighbors)
 
         # Normalize using the CustomScaler — not hardcoded logic here
         if self.scaler is None:
             raise ValueError("Scaler must be initialized before normalizing deltas.")
-        
+
         delta_time_norm = self.scaler.normalize_delta_time(delta_time)
         delta_pos_norm = self.scaler.normalize_delta_pos(delta_pos)
 
@@ -228,15 +248,13 @@ class DatasetAdapter:
 
         return formatted, new_cols
 
-
     def _add_targets(
         self, formatted: pd.DataFrame, neighbors: pd.DataFrame
     ) -> Tuple[pd.DataFrame, List[str]]:
-        
+
         if self.scaler is None:
-            raise ValueError(
-                "Scaler must be initialized before adding targets.")
-        
+            raise ValueError("Scaler must be initialized before adding targets.")
+
         raw = neighbors[self.metadata.target].to_numpy(dtype=float)
         scaled = self.scaler.transform_target(raw)
         new_cols = []
@@ -246,12 +264,13 @@ class DatasetAdapter:
 
         return formatted, new_cols
 
-    def _add_features(self, formatted: pd.DataFrame, neighbors: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    def _add_features(
+        self, formatted: pd.DataFrame, neighbors: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, List[str]]:
 
         if self.scaler is None:
-            raise ValueError(
-                "Scaler must be initialized before adding features.")
-        
+            raise ValueError("Scaler must be initialized before adding features.")
+
         # 1) Extract raw feature matrix
         raw = neighbors[self.metadata.features].to_numpy(dtype=float)
 
@@ -265,8 +284,6 @@ class DatasetAdapter:
             new_cols.append(col)
 
         return formatted, new_cols
-
-    
 
     def _get_shapes(self) -> Tuple[Tuple[int, int], Tuple[int], Tuple[int]]:
         """
@@ -308,17 +325,15 @@ class DatasetAdapter:
         neighbors: pd.DataFrame,
     ) -> pd.DataFrame:
 
-        
         formatted: pd.DataFrame = pd.DataFrame(index=neighbors.index)
         formatted, target_cols = self._add_targets(formatted, neighbors)
         formatted, feature_cols = self._add_features(formatted, neighbors)
         formatted, delta_cols = self._add_deltas(formatted, row, neighbors)
 
-        if not hasattr(self, 'neighbor_schema'):
+        if not hasattr(self, "neighbor_schema"):
             self.neighbor_schema = NeighborSchema.from_formatted(
                 formatted, target_cols, feature_cols, delta_cols
             )
-
 
         return formatted
 
@@ -331,6 +346,11 @@ class DatasetAdapter:
     ) -> Tuple[np.ndarray, np.ndarray]:
         k, F = neighbors.shape
         M = max_neighborhood_size
+
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "Random number generator not initialized. Call reset(seed) before using this method."
+            )
 
         padded = np.full((M, F), invalid_value, dtype=float)
         mask = np.zeros((M,), dtype=np.bool_)
@@ -351,20 +371,23 @@ class DatasetAdapter:
     def get_ground_truth(self, row: pd.Series) -> np.ndarray:
         """Extrai o target (ground truth) do sample central."""
         return row[self.metadata.target].to_numpy(dtype=float)
-    
+
     def normalize_observation(self, padded, ground_truth):
 
         if self.scaler is None:
             raise ValueError(
-                "Scaler must be initialized before normalizing observations.")
+                "Scaler must be initialized before normalizing observations."
+            )
 
         # 🔹 Normalize features and targets
         padded_scaled = self.scaler.transform_features(padded)
-        ground_truth_scaled  = self.scaler.transform_target(ground_truth)
+        ground_truth_scaled = self.scaler.transform_target(ground_truth)
 
         return padded_scaled, ground_truth_scaled
 
-    def _save_last_data(self, sample: pd.Series, padded_scaled, mask, feature_names, ground_truth_scaled):
+    def _save_last_data(
+        self, sample: pd.Series, padded_scaled, mask, feature_names, ground_truth_scaled
+    ):
         self.last_sample: pd.Series = sample
         self.last_padded = padded_scaled
         self.last_mask = mask
@@ -375,6 +398,11 @@ class DatasetAdapter:
         if cursor >= len(self.unique_times):
             raise Exception("[dataset_adapter] no more dates.")
 
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "Random number generator not initialized. Call reset(seed) before using this method."
+            )
+
         current_time = self.unique_times[cursor]
         time_slice = self.data[self.data[self.metadata.time] == current_time]
 
@@ -382,7 +410,7 @@ class DatasetAdapter:
         chosen_idx = self.rng.choice(time_slice.index)
         sample = time_slice.loc[chosen_idx]
         return sample
-    
+
     def get_baseline(self) -> np.ndarray:
         """
         Return baseline prediction in the same (scaled) space as the target.
@@ -394,7 +422,7 @@ class DatasetAdapter:
 
         if self.metadata.baseline is None:
             raise ValueError("Metadata baseline columns are not defined.")
-        
+
         baseline_raw = self.last_sample[self.metadata.baseline].to_numpy(dtype=float)
 
         baseline_scaled = self.scaler.transform_target(
@@ -403,8 +431,9 @@ class DatasetAdapter:
 
         return baseline_scaled
 
-
-    def _read(self, cursor) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
+    def _read(
+        self, cursor
+    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
         """
         Return next row with its neighborhood (padded).
         Iterates sequentially and flags `done=True` when the dataset ends.
@@ -412,39 +441,44 @@ class DatasetAdapter:
         """
 
         if self.scaler is None:
-            raise ValueError(
-                "Scaler must be initialized before transform targets.")
-        
-        
+            raise ValueError("Scaler must be initialized before transform targets.")
+
         # Verifica antes de ler
         if self.cursor >= len(self.unique_times) - 1:
             self.done = True
 
         sample = self._get_sample(cursor)
         row_index = sample.name
-        
+
         neighbors = self.get_neighbors(row_index=cast(int, row_index), row=sample)
 
         formatted = self.format_neighbors(sample, neighbors)
 
         feature_names = list(formatted.columns)
         ground_truth = self.get_ground_truth(sample)
-        ground_truth_scaled = self.scaler.transform_target(ground_truth.reshape(1, -1)).flatten()
+        ground_truth_scaled = self.scaler.transform_target(
+            ground_truth.reshape(1, -1)
+        ).flatten()
 
         padded, mask = self.pad_neighbors(
             formatted, max_neighborhood_size=self.params.max_neighborhood_size
         )
 
-        #padded_scaled, ground_truth_scaled = self.normalize_observation(padded, ground_truth)
+        # padded_scaled, ground_truth_scaled = self.normalize_observation(padded, ground_truth)
         self._save_last_data(sample, padded, mask, feature_names, ground_truth_scaled)
-        
+
         return sample, padded, mask, feature_names, ground_truth_scaled, self.done
 
-
     def read_resample_neighbors(self):
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "Random number generator not initialized. Call reset(seed) before using this method."
+            )
         return self._read(self.cursor)
 
-    def next(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
+    def next(
+        self,
+    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
         """
         Return next row with its neighborhood (padded).
         Iterates sequentially and flags `done=True` when the dataset ends.
@@ -454,11 +488,18 @@ class DatasetAdapter:
         self.cursor += 1  # Só avança depois de ler com sucesso
         return reading
 
-
-    def last(self) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
+    def last(
+        self,
+    ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
         """Returns the last sample returned by `next()`."""
-        return (self.last_sample, self.last_padded, self.last_mask,
-                self.last_feature_names, self.last_ground_truth, self.done)
+        return (
+            self.last_sample,
+            self.last_padded,
+            self.last_mask,
+            self.last_feature_names,
+            self.last_ground_truth,
+            self.done,
+        )
 
 
 if __name__ == "__main__":
@@ -466,30 +507,32 @@ if __name__ == "__main__":
 
     # ⚠️ Preencha com o caminho real do seu CSV
     # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\ISU_Soil_Moisture_Network\\dataset_preprocessed.xlsx"
-    #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\src\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
+    # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\src\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
     data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\daily\\processed\\dataset_with_baseline.csv"
-
-
 
     metadata = Metadata(
         time="valid",  # coluna de tempo
         position=["Latitude1", "Longitude1"],  # colunas espaciais
         id="station",  # coluna de identificação
         features=[
-            "in_high", "in_low", #temperature
-            "in_rh_min", "in_rh", "in_rh_max", #relative humidity min, avg, max
-            "in_solar_mj", #solar radiation
-            
-            "in_precip", #preciptation
-            "in_speed", #wind speed
+            "in_high",
+            "in_low",  # temperature
+            "in_rh_min",
+            "in_rh",
+            "in_rh_max",  # relative humidity min, avg, max
+            "in_solar_mj",  # solar radiation
+            "in_precip",  # preciptation
+            "in_speed",  # wind speed
             # A sudden, brief increase in wind speed, typically lasting 2–5 seconds, above the mean wind speed.
             "in_gust",
-            "in_et", #evapotranspiration
-            "Elevation [m]", #elevation
+            "in_et",  # evapotranspiration
+            "Elevation [m]",  # elevation
         ],
         target=["out_lwmwet_1_tot"],  # , "out_lwmwet_2_tot"]  # colunas alvo
     )
 
+    seed = 42
+    rng = np.random.default_rng(seed)
     params = AdapterParams(
         min_neighborhood_size=1,
         max_neighborhood_size=4,
@@ -499,11 +542,11 @@ if __name__ == "__main__":
     )
 
     adapter = DatasetAdapter(data_path_windows, metadata, params=params)
+    adapter.reset(seed)
 
     # Lê uma amostra com vizinhança
     for _i in range(256):
         sample, padded, mask, feature_names, ground_truth, done = adapter.next()
-
 
     print("\n=== Padded neighbors ===")
     print(feature_names)

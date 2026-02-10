@@ -4,11 +4,9 @@ import numpy as np
 from wildfire_pyro.common.messages import EvaluationMetrics
 from wildfire_pyro.environments.base_environment import BaseEnvironment
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
-from wildfire_pyro.common.seed_manager import get_seed_manager
 
 
 class BootstrapEvaluator:
-
     """
     Statistical Evaluation Methodology
     ----------------------------------
@@ -20,7 +18,7 @@ class BootstrapEvaluator:
     Let Y be the true target variable and Ŷ the model prediction. The objective
     is to estimate the expected absolute prediction error:
 
-        E[ |Ŷ − Y| ]
+        E[ |Ŷ - Y| ]
 
     when predictions depend on a stochastic and partially observed context
     (e.g., neighboring samples, sensors, or spatial-temporal neighborhoods).
@@ -103,16 +101,14 @@ class BootstrapEvaluator:
     computational tractability.
     """
 
-
     def __init__(
         self,
         environment: BaseEnvironment,
         learner: BaseLearningManager,
         n_eval: int,
         n_bootstrap: int,
-        seed: int,
     ):
-        
+
         assert n_eval > 1, "n_eval must greater than 1"
         assert n_bootstrap > 1, "n_bootstrap must be greater than 1"
 
@@ -120,14 +116,10 @@ class BootstrapEvaluator:
         self.learner = learner
         self.n_eval = n_eval
         self.n_bootstrap = n_bootstrap
-        self.seed = seed
-
-
-        
 
     def _local_bootstrap_errors(
-            self,
-        ) -> Tuple[List[float], List[float], List[float], List[float]]:
+        self,
+    ) -> Tuple[List[float], List[float], List[float], List[float]]:
         """
         Performs LOCAL bootstrap evaluation for a SINGLE pivot (fixed target).
 
@@ -151,8 +143,7 @@ class BootstrapEvaluator:
             RMSE values of the baseline (diagnostic)
         """
 
-        obs, gt, baseline = self.env.get_bootstrap_observations(
-            self.n_bootstrap)
+        obs, gt, baseline = self.env.get_bootstrap_observations(self.n_bootstrap)
 
         preds, _ = self.learner.predict(obs)
 
@@ -166,7 +157,6 @@ class BootstrapEvaluator:
 
         model_rmses = np.sqrt((preds_raw - gt_raw.squeeze()) ** 2)
         baseline_rmses = np.sqrt((baseline_raw.squeeze() - gt_raw.squeeze()) ** 2)
-
 
         return (
             model_maes.tolist(),
@@ -221,7 +211,7 @@ class BootstrapEvaluator:
 
         return model_mae, baseline_mae, model_rmse, baseline_rmse, win
 
-    def evaluate(self) -> EvaluationMetrics:
+    def evaluate(self, seed: int) -> EvaluationMetrics:
         """
         Performs GLOBAL evaluation over multiple pivots.
 
@@ -231,7 +221,7 @@ class BootstrapEvaluator:
         expected error.
         """
 
-        self.env.reset(self.seed)
+        self.env.reset(seed)
 
         model_maes = []
         baseline_maes = []
@@ -266,20 +256,15 @@ class BootstrapEvaluator:
         model_maes = np.asarray(model_maes)
         baseline_maes = np.asarray(baseline_maes)
 
-
-
         return EvaluationMetrics(
             # Central tendency
             model_mae_mean=float(np.mean(model_maes)),
             model_mae_std=float(np.std(model_maes, ddof=1)),
-
             baseline_mae_mean=float(np.mean(baseline_maes)),
             baseline_mae_std=float(np.std(baseline_maes, ddof=1)),
-
             # Diagnostics
             model_rmse_mean=float(np.mean(model_rmses)),
             baseline_rmse_mean=float(np.mean(baseline_rmses)),
-
             win_rate_over_baseline=float(np.mean(wins)),
         )
 
@@ -308,7 +293,6 @@ if __name__ == "__main__":
 
     configure_seed_manager(GLOBAL_SEED)
 
-
     model_parameters = {
         "lr": 0.001,
         "dropout_prob": 0.2,
@@ -316,12 +300,10 @@ if __name__ == "__main__":
         "batch_size": 256,
     }
 
-
     logging_parameters = {
         "log_path": "/",
         "format_strings": ["csv", "tensorboard", "stdout"],
     }
-
 
     runtime_parameters = {
         "device": "cuda",
@@ -332,17 +314,19 @@ if __name__ == "__main__":
     # -----------------------------
     # Build environment & learner
     # -----------------------------
-    env = IowaEnvironment(data_path="C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\experiments\\iowa_soil\\data\\test.csv")
-    
+    env = IowaEnvironment(
+        data_path="C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\experiments\\iowa_soil\\data\\test.csv"
+    )
 
-    learner = create_deep_set_learner(env, model_parameters, logging_parameters, runtime_parameters)
+    learner = create_deep_set_learner(
+        env, model_parameters, logging_parameters, runtime_parameters
+    )
 
     evaluator = BootstrapEvaluator(
         environment=env,
         learner=learner,
         n_eval=N_EVAL,
         n_bootstrap=N_BOOTSTRAP,
-        seed=GLOBAL_SEED,
     )
 
     # -----------------------------
@@ -409,5 +393,5 @@ if __name__ == "__main__":
     print(f" FULL EVALUATOR (N_EVAL={N_EVAL}) ")
     print("==============================")
 
-    metrics = evaluator.evaluate()
+    metrics = evaluator.evaluate(GLOBAL_SEED)
     print(metrics)

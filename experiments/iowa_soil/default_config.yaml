@@ -35,7 +35,7 @@ evaluation:
   # Controls estimation of model uncertainty conditioned on the same target.
 
 runtime:
-  base_seed: 123456
+  GLOBAL_SEED: 123456
   device: mps #cuda, cpu, 
   verbose: false
 

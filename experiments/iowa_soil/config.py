@@ -14,9 +14,7 @@ from parameters import (
     DataParameters,
 )
 
-DEFAULT_CONFIG_PATH = (
-    Path(__file__).parent / "default_config.yaml"
-).resolve()
+DEFAULT_CONFIG_PATH = (Path(__file__).parent / "default_config.yaml").resolve()
 
 
 @dataclass(frozen=True)
@@ -41,13 +39,11 @@ def load_full_config(yaml_path: str) -> LoadedConfig:
 
     runtime = spec["runtime"]
     runtime_parameters = RuntimeParameters(
-        base_seed=runtime["base_seed"],
-        seed=runtime["base_seed"],   # inicial, será derivada depois
+        GLOBAL_SEED=runtime["GLOBAL_SEED"],
         log_dir="",
         verbose=runtime["verbose"],
-        device=runtime.get("device", "cpu")
+        device=runtime.get("device", "cpu"),
     )
-
 
     logging_parameters = LoggingParameters(
         log_path="",
@@ -80,7 +76,8 @@ def load_full_config(yaml_path: str) -> LoadedConfig:
         train_path=str((base_dir / data["train_path"]).resolve()),
         validation_path=(
             str((base_dir / data["validation_path"]).resolve())
-            if data.get("validation_path") else None
+            if data.get("validation_path")
+            else None
         ),
         test_path=str((base_dir / data["test_path"]).resolve()),
     )

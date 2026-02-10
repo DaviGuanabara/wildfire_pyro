@@ -19,7 +19,9 @@ class IowaEnvironmentExperiment:
 
     def setup(self):
         # Single source of randomness for the whole experiment
-        self.seed_manager = configure_seed_manager(self.config.runtime_parameters.seed)
+        self.seed_manager = configure_seed_manager(
+            global_seed=self.config.runtime_parameters.GLOBAL_SEED
+        )
 
         # Environments
         self.train_env = IowaEnvironment(
@@ -75,10 +77,9 @@ class IowaEnvironmentExperiment:
             learner=self.learner,
             n_eval=self.config.test_parameters.n_eval,
             n_bootstrap=self.config.test_parameters.n_bootstrap,
-            seed=self.seed_manager.get_seed("bootstrap_evaluator"),
         )
 
-        return evaluator.evaluate()
+        return evaluator.evaluate(self.seed_manager.get_seed("bootstrap_evaluator"))
 
     def teardown(self):
         self.train_env.close()

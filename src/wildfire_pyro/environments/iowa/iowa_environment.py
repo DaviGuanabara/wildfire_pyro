@@ -6,15 +6,25 @@ from wildfire_pyro.environments.iowa.components.metadata import Metadata
 from wildfire_pyro.environments.iowa.parametric_environment import ParametricEnvironment
 
 
-
 class IowaEnvironment(ParametricEnvironment):
-    def __init__(self, data_path, verbose: bool = False, baseline_type="mean_neighbor",
-                 scaler: Optional[CustomScaler] = None):
+    def __init__(
+        self,
+        data_path,
+        verbose: bool = False,
+        baseline_type="mean_neighbor",
+        scaler: Optional[CustomScaler] = None,
+    ):
 
         metadata = self._metadata()
         params = self._params(verbose)
 
-        super().__init__(data_path=data_path, metadata=metadata, params=params, baseline_type=baseline_type, scaler=scaler)
+        super().__init__(
+            data_path=data_path,
+            metadata=metadata,
+            params=params,
+            baseline_type=baseline_type,
+            scaler=scaler,
+        )
 
     def _params(self, verbose: bool) -> AdapterParams:
         return AdapterParams(
@@ -32,10 +42,12 @@ class IowaEnvironment(ParametricEnvironment):
             position=["Latitude1", "Longitude1"],  # colunas espaciais
             id="station",  # coluna de identificação
             features=[
-                "in_high", "in_low",  # temperature
-                "in_rh_min", "in_rh", "in_rh_max",  # relative humidity min, avg, max
+                "in_high",
+                "in_low",  # temperature
+                "in_rh_min",
+                "in_rh",
+                "in_rh_max",  # relative humidity min, avg, max
                 "in_solar_mj",  # solar radiation
-
                 "in_precip",  # preciptation
                 "in_speed",  # wind speed
                 # A sudden, brief increase in wind speed, typically lasting 2–5 seconds, above the mean wind speed.
@@ -46,7 +58,7 @@ class IowaEnvironment(ParametricEnvironment):
             ],
             # , "out_lwmwet_2_tot"]  # colunas alvo
             target=["out_lwmwet_1_tot"],
-            baseline=["baseline"]
+            baseline=["baseline"],
         )
 
 
@@ -56,17 +68,17 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # ⚠️ Preencha com o caminho real do seu CSV de treino
-    #data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
-    #data_path_mac = "/Users/Davi/Documents/GitHub/wildfire_workspace/wildfire/examples/iowa_soil/data/train.csv"
-    #data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
+    # data_path = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\wildfire_pyro\\examples\\iowa_soil\\data\\train.csv"
+    # data_path_mac = "/Users/Davi/Documents/GitHub/wildfire_workspace/wildfire/examples/iowa_soil/data/train.csv"
+    # data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\processed\\tidy_isusm_stations.csv"
 
     data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\daily\\processed\\dataset_with_baseline.csv"
     data_path = data_path_windows
     # Instancia o ambiente
     env = IowaEnvironment(data_path=data_path_windows, verbose=True)
-
+    seed = 42
     # Reset do ambiente
-    obs, info = env.reset()
+    obs, info = env.reset(seed=seed)
 
     print("\n=== Reset Environment ===")
     print("Observation keys:", list(obs.keys()))
@@ -81,7 +93,7 @@ if __name__ == "__main__":
     for step_id in range(3):
 
         obs, reward, terminated, truncated, info = env.step()
-        
+
         raw_ground_truth = scaler.inverse_transform_target(info["ground_truth"])
         raw_baseline = scaler.inverse_transform_target(env.get_baseline())
 
@@ -95,7 +107,7 @@ if __name__ == "__main__":
         print("Baseline:", env.get_baseline(), raw_baseline, "min")
         print("feature_names:", info["feature_names"])
 
-    bootstrap_obs, _,  bootstrap_baseline = env.get_bootstrap_observations(n_bootstrap=5)
+    bootstrap_obs, _, bootstrap_baseline = env.get_bootstrap_observations(n_bootstrap=5)
     baseline_pred = env.get_baseline()
 
     print("\n=== Bootstrap Baseline Predictions ===")

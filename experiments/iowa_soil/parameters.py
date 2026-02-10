@@ -15,8 +15,7 @@ class DataParameters:
 
 @dataclass(frozen=True)
 class RuntimeParameters:
-    base_seed: int
-    seed: int
+    GLOBAL_SEED: int
     log_dir: str
     verbose: bool
     device: str
@@ -62,11 +61,11 @@ class RunParameters:
     def with_trial(self, trial: optuna.Trial) -> "RunParameters":
         log_dir = f"logs/optuna/trial_{trial.number}"
 
+        # TODO:  trial suggest should not be here.
         return replace(
             self,
             runtime_parameters=replace(
                 self.runtime_parameters,
-                seed=trial.number,
                 log_dir=log_dir,
             ),
             logging_parameters=replace(
@@ -76,12 +75,8 @@ class RunParameters:
             model_parameters=replace(
                 self.model_parameters,
                 lr=trial.suggest_float("lr", 1e-4, 1e-1, log=True),
-                hidden=trial.suggest_categorical(
-                    "hidden", [64, 128, 256, 512, 1024]
-                ),
+                hidden=trial.suggest_categorical("hidden", [64, 128, 256, 512, 1024]),
                 dropout_prob=trial.suggest_float("dropout", 0.0, 0.5),
-                batch_size=trial.suggest_categorical(
-                    "batch_size", [64, 128, 256]
-                ),
+                batch_size=trial.suggest_categorical("batch_size", [64, 128, 256]),
             ),
         )
