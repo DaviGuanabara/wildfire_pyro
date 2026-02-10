@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 import yaml
 
-from parameters import (
+from wildfire_pyro.helpers.parameters import (
     RunParameters,
     RuntimeParameters,
     LoggingParameters,

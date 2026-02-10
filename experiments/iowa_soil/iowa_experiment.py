@@ -10,7 +10,7 @@ from wildfire_pyro.common.seed_manager import configure_seed_manager
 from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
 from wildfire_pyro.models.deep_set_attention_net import DeepSetAttentionNet
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager
-from parameters import RunParameters
+from wildfire_pyro.helpers.parameters import RunParameters
 
 
 class IowaEnvironmentExperiment:
@@ -46,9 +46,9 @@ class IowaEnvironmentExperiment:
         self.learner = SupervisedLearningManager(
             neural_network=net,
             environment=self.train_env,
-            logging_parameters=asdict(self.config.logging_parameters),
-            runtime_parameters=asdict(self.config.runtime_parameters),
-            model_parameters=asdict(self.config.model_parameters),
+            logging_parameters=self.config.logging_parameters,
+            runtime_parameters=self.config.runtime_parameters,
+            model_parameters=self.config.model_parameters,
         )
 
     def _train(self) -> SupervisedLearningManager:

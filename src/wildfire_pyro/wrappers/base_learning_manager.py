@@ -13,8 +13,22 @@ import torch
 
 from typing import TYPE_CHECKING, Optional, Union, Iterable, Dict, Any
 from wildfire_pyro.common.logger import Logger, configure
-from wildfire_pyro.wrappers.components import PredictionProvider, LabelProvider, ReplayBuffer, BaseOutputProvider
-from wildfire_pyro.wrappers.components.observation_provider import BaseObservationProvider, LabelObservationProvider, PredictionObservationProvider
+from wildfire_pyro.helpers.parameters import (
+    LoggingParameters,
+    ModelParameters,
+    RuntimeParameters,
+)
+from wildfire_pyro.wrappers.components import (
+    PredictionProvider,
+    LabelProvider,
+    ReplayBuffer,
+    BaseOutputProvider,
+)
+from wildfire_pyro.wrappers.components.observation_provider import (
+    BaseObservationProvider,
+    LabelObservationProvider,
+    PredictionObservationProvider,
+)
 
 
 if TYPE_CHECKING:
@@ -35,9 +49,7 @@ import numpy as np
 from wildfire_pyro.common.seed_manager import get_seed
 
 
-
-
-#TODO:
+# TODO:
 # target_extractor=lambda info: info["teacher_output"]["velocity"]
 # Is it interesting to have a target extractor?
 # It is a function that takes the info dictionary and returns the target value.
@@ -45,9 +57,9 @@ class BaseLearningManager:
     def __init__(
         self,
         environment: BaseEnvironment,
-        runtime_parameters: Dict[str, Any],
-        logging_parameters: Dict[str, Any],
-        model_parameters: Dict[str, Any],
+        runtime_parameters: RuntimeParameters,
+        logging_parameters: LoggingParameters,
+        model_parameters: ModelParameters,
         neural_network: Optional[torch.nn.Module] = None,
     ):
         """
@@ -64,8 +76,10 @@ class BaseLearningManager:
         self.environment = environment
         self.device, self.verbose, self.seed = self._init_runtime(runtime_parameters)
         self.log_path, self.format_strings = self._init_logging(logging_parameters)
-        #self.path_to_hdf5 = pathlib.Path(self.log_path, "path_to_hdf5")
-        self.batch_size, self.rollout_size, self.lr = self._init_model_params(model_parameters)
+        # self.path_to_hdf5 = pathlib.Path(self.log_path, "path_to_hdf5")
+        self.batch_size, self.rollout_size, self.lr = self._init_model_params(
+            model_parameters
+        )
 
         # estado inicial do ambiente
         obs, info = self._reset_environment()
@@ -92,34 +106,33 @@ class BaseLearningManager:
     # Métodos auxiliares
     # -------------------------------
 
-    def _init_runtime(self, runtime_parameters: Dict[str, Any]):
-        device = runtime_parameters.get("device", "cpu")
-        verbose = runtime_parameters.get("verbose", 1)
-        seed = runtime_parameters.get("seed", 42)
+    def _init_runtime(self, runtime_parameters: RuntimeParameters):
+        device = runtime_parameters.device
+        verbose = runtime_parameters.verbose
+        seed = runtime_parameters.GLOBAL_SEED
         return device, verbose, seed
 
-    def _init_logging(self, logging_parameters: Dict[str, Any]):
-        log_path = logging_parameters.get("log_path")
-        format_strings = logging_parameters.get("format_strings")
+    def _init_logging(self, logging_parameters: LoggingParameters):
+        log_path = logging_parameters.log_path
+        format_strings = logging_parameters.format_strings
         return log_path, format_strings
 
-    def _init_model_params(self, model_parameters: Dict[str, Any]):
-        batch_size = model_parameters.get("batch_size", 64)
-        rollout_size = model_parameters.get("rollout_size", batch_size)
-        lr = model_parameters.get("lr", 1e-3)
+    def _init_model_params(self, model_parameters: ModelParameters):
+        batch_size = model_parameters.batch_size
+        rollout_size = model_parameters.rollout_size
+        lr = model_parameters.lr
         return batch_size, rollout_size, lr
 
     def _reset_environment(self):
-        init_seed = get_seed("BaseLearningManager/init")
-        if "seed" in self.environment.reset.__code__.co_varnames:
-            return self.environment.reset(seed=init_seed)
         return self.environment.reset()
 
     def _init_replay_buffer(self, environment: BaseEnvironment):
         obs_space = environment.observation_space
 
         # Para o genérico, só checamos se é suportado
-        if not (isinstance(obs_space, spaces.Box) or isinstance(obs_space, spaces.Dict)):
+        if not (
+            isinstance(obs_space, spaces.Box) or isinstance(obs_space, spaces.Dict)
+        ):
             raise ValueError(f"Unsupported observation space: {type(obs_space)}")
 
         return ReplayBuffer(
@@ -127,15 +140,10 @@ class BaseLearningManager:
             device=self.device,
         )
 
-        
-
-
-
     def _get_action_shape(self, environment: BaseEnvironment):
         if isinstance(environment.action_space, spaces.Box):
             return environment.action_space.shape
         return (1,)
-
 
     def set_neural_network(self, neural_network: torch.nn.Module):
         """
@@ -154,18 +162,17 @@ class BaseLearningManager:
         self.prediction_provider = PredictionProvider(
             network=neural_network,
             observation_space=self.environment.observation_space,
-            device=self.device
+            device=self.device,
         )
 
         self.label_provider: BaseOutputProvider = LabelProvider()
 
-        self.prediction_obs_provider: BaseObservationProvider = PredictionObservationProvider()
+        self.prediction_obs_provider: BaseObservationProvider = (
+            PredictionObservationProvider()
+        )
         self.label_obs_provider: BaseObservationProvider = LabelObservationProvider()
 
-    def _update_learning_rate(
-        self,
-        **kwargs
-    ) -> float:
+    def _update_learning_rate(self, **kwargs) -> float:
         """
         Updates the learning rate based on training dynamics.
 
@@ -180,17 +187,16 @@ class BaseLearningManager:
         """
 
         current_step = self.num_timesteps
-        total_steps=self._total_timesteps
+        total_steps = self._total_timesteps
         evaluation_metrics = self.evaluation_metrics or {}
         loss = self.loss  # Use the most recent loss
-
 
         new_lr = self.lr_fn(
             step=current_step,
             total_steps=total_steps,
             loss=loss,
-            evaluation_metrics = evaluation_metrics,
-            **kwargs  # pass other contextual signals like evaluation_metrics
+            evaluation_metrics=evaluation_metrics,
+            **kwargs,  # pass other contextual signals like evaluation_metrics
         )
 
         for param_group in self.optimizer.param_groups:
@@ -198,14 +204,14 @@ class BaseLearningManager:
 
         if hasattr(self, "logger"):
             self.logger.record("lr/train", new_lr, exclude="stdout")
-            #self.logger.dump(self.num_timesteps)
+            # self.logger.dump(self.num_timesteps)
 
         if self.verbose > 0:
             print(
-                f"[Info] Updated learning rate to {new_lr:.6f} at step {current_step}.")
+                f"[Info] Updated learning rate to {new_lr:.6f} at step {current_step}."
+            )
 
         return new_lr
-    
 
     def _init_callback(
         self,
@@ -249,7 +255,7 @@ class BaseLearningManager:
     # TODO: Injetar aqui o action provider
     # PQ ELE vai dizer quem é o action source
     # o aluno ou o professor.
-    
+
     def collect_rollouts(
         self,
         n_rollout_steps: int,
@@ -265,32 +271,35 @@ class BaseLearningManager:
         callback.on_rollout_start()
 
         # Ensure we start with a valid observation
-        #obs, info = self.environment.reset(seed=self._generate_rollout_seed())
+        # obs, info = self.environment.reset(seed=self._generate_rollout_seed())
 
-        obs, info = self.environment.reset(
-            seed=self._generate_rollout_seed()) if "seed" in self.environment.reset.__code__.co_varnames else self.environment.reset()
-
+        obs, info = (
+            self.environment.reset(seed=self._generate_rollout_seed())
+            if "seed" in self.environment.reset.__code__.co_varnames
+            else self.environment.reset()
+        )
 
         for step in range(n_rollout_steps):
 
             prediction_obs = self.prediction_obs_provider.get_observation(obs, info)
             prediction = self.prediction_provider.get_output(obs=prediction_obs)
-            
+
             label_obs = self.label_obs_provider.get_observation(obs, info)
             label = self.label_provider.get_output(obs=label_obs)
-            
 
             if label is None:
                 print(f"[Warning] Missing 'label'. Ending rollout.")
                 break
 
-            #print(f"[Info] Collected rollout step {step + 1}/{n_rollout_steps}.")
-            #print(prediction, label)
-            #print(prediction_obs)
+            # print(f"[Info] Collected rollout step {step + 1}/{n_rollout_steps}.")
+            # print(prediction, label)
+            # print(prediction_obs)
             self.buffer.add(prediction_obs, prediction[0], label[0])
-            #self.save_to_hdf5(self.path_to_hdf5, obs=prediction_obs, action=prediction[0], target=label[0])
+            # self.save_to_hdf5(self.path_to_hdf5, obs=prediction_obs, action=prediction[0], target=label[0])
 
-            obs, reward, terminated, truncated, info = self.environment.step(prediction[0])
+            obs, reward, terminated, truncated, info = self.environment.step(
+                prediction[0]
+            )
             self.num_timesteps += 1
 
             callback.update_locals(locals())
@@ -299,7 +308,9 @@ class BaseLearningManager:
                 return False
 
             if terminated or truncated:
-                obs, info = self.environment.reset(seed=self._generate_rollout_seed())
+                # DONT CHANGE ENVIRONMET SEED.
+                # Higher classes are responsible for resetting the environment with a new seed if needed.
+                obs, info = self.environment.reset()
 
         callback.on_rollout_end()
         return True
@@ -327,13 +338,15 @@ class BaseLearningManager:
         if reset_num_timesteps:
             self.num_timesteps = 0
             self._episode_num = 0
-            #self._last_obs, self._last_info = self.environment.reset(
+            # self._last_obs, self._last_info = self.environment.reset(
             #    seed=self._generate_rollout_seed()
-            #)
+            # )
 
-            obs, info = self.environment.reset(
-                seed=self._generate_rollout_seed()) if "seed" in self.environment.reset.__code__.co_varnames else self.environment.reset()
-
+            obs, info = (
+                self.environment.reset(seed=self._generate_rollout_seed())
+                if "seed" in self.environment.reset.__code__.co_varnames
+                else self.environment.reset()
+            )
 
         else:
             total_timesteps += self.num_timesteps
@@ -343,8 +356,7 @@ class BaseLearningManager:
 
         # Configure logger
         if not self._custom_logger:
-            self.logger = configure(self.log_path, self.format_strings)
-
+            self.logger = configure(self.log_path, list(self.format_strings))
 
         # Initialize callback
         callback = self._init_callback(callback, progress_bar)
@@ -365,15 +377,17 @@ class BaseLearningManager:
         while steps_completed < total_timesteps:
             rollout_steps = min(self.batch_size, total_timesteps - steps_completed)
 
-            continue_training = self.collect_rollouts(n_rollout_steps=rollout_steps, callback=callback)
+            continue_training = self.collect_rollouts(
+                n_rollout_steps=rollout_steps, callback=callback
+            )
 
             if not continue_training:
                 break
 
             loss = self._train()
-            #self.logger.record("train/loss", loss)
-            #self.logger.dump(step=self.num_timesteps)
-            #self.dump_logs(iteration=self.num_timesteps)
+            # self.logger.record("train/loss", loss)
+            # self.logger.dump(step=self.num_timesteps)
+            # self.dump_logs(iteration=self.num_timesteps)
 
             steps_completed += rollout_steps
 
@@ -460,11 +474,10 @@ class BaseLearningManager:
 
     import h5py
 
-
     def save_to_hdf5(self, file_path, obs, action, target):
         """
         Salva um passo de rollout em HDF5 (append seguro).
-        
+
         Args:
             file_path (str): Caminho do arquivo HDF5.
             obs (dict): Observação do ambiente.
@@ -479,29 +492,37 @@ class BaseLearningManager:
                     # primeira dim é variável (batch)
                     maxshape = (None,) + value.shape
                     f.create_dataset(
-                        key, data=value[None], maxshape=maxshape, chunks=True)
+                        key, data=value[None], maxshape=maxshape, chunks=True
+                    )
                 else:
-                    f[key].resize(f[key].shape[0] + 1, axis=0) #type: ignore
+                    f[key].resize(f[key].shape[0] + 1, axis=0)  # type: ignore
                     f[key][-1] = value  # type: ignore
 
             # Ações
             action = np.array(action, dtype=np.float32)
             if "actions" not in f:
-                f.create_dataset("actions", data=action[None], maxshape=(
-                    None,) + action.shape, chunks=True)
+                f.create_dataset(
+                    "actions",
+                    data=action[None],
+                    maxshape=(None,) + action.shape,
+                    chunks=True,
+                )
             else:
-                f["actions"].resize(f["actions"].shape[0] + 1, axis=0) #type: ignore
+                f["actions"].resize(f["actions"].shape[0] + 1, axis=0)  # type: ignore
                 f["actions"][-1] = action  # type: ignore
 
             # Targets
             target = np.array(target, dtype=np.float32)
             if "targets" not in f:
-                f.create_dataset("targets", data=target[None], maxshape=(
-                    None,) + target.shape, chunks=True)
+                f.create_dataset(
+                    "targets",
+                    data=target[None],
+                    maxshape=(None,) + target.shape,
+                    chunks=True,
+                )
             else:
-                f["targets"].resize(f["targets"].shape[0] + 1, axis=0) #type: ignore
+                f["targets"].resize(f["targets"].shape[0] + 1, axis=0)  # type: ignore
                 f["targets"][-1] = target  # type: ignore
-
 
     def _excluded_save_params(self) -> set:
         """
@@ -544,12 +565,14 @@ class BaseLearningManager:
         self._custom_logger = True
 
     @abstractmethod
-    def predict(self, obs: np.ndarray, deterministic: bool = True) -> Tuple[np.ndarray, Any]:
+    def predict(
+        self, obs: np.ndarray, deterministic: bool = True
+    ) -> Tuple[np.ndarray, Any]:
         """
         Predict actions from observations.
         """
         raise NotImplementedError("Subclasses must implement this method.")
-    
+
     def update_eval_metrics(
         self,
         evaluation_metrics: Dict[str, Any],
@@ -567,9 +590,8 @@ class BaseLearningManager:
             obj = getattr(obj, attribute, *default)
         return obj
 
-
     def save_to_zip_file(
-        self, 
+        self,
         path: Union[str, pathlib.Path, io.BufferedIOBase],
         data: Dict[str, Any],
         params: Dict[str, Any],
@@ -588,7 +610,6 @@ class BaseLearningManager:
             if pytorch_variables is not None:
                 with archive.open("pytorch_variables.pth", "w") as f:
                     torch.save(pytorch_variables, f)
-        
 
 
 class LearningRateSchedulerWrapper:
@@ -613,10 +634,11 @@ class LearningRateSchedulerWrapper:
         total_steps: Optional[int] = None,
         **kwargs: Any,
     ) -> float:
-        
+
         if self.lr is None:
             raise ValueError(
-                "Learning rate scheduler is None. Check model_parameters['lr']")
+                "Learning rate scheduler is None. Check model_parameters['lr']"
+            )
 
         if total_steps is not None and step is not None:
             progress_remaining = 1.0 - step / max(total_steps, 1)
@@ -625,10 +647,7 @@ class LearningRateSchedulerWrapper:
 
         if callable(self.lr):
             return self._dispatch(
-                self.lr,
-                step=step,
-                progress_remaining=progress_remaining,
-                **kwargs
+                self.lr, step=step, progress_remaining=progress_remaining, **kwargs
             )
         else:
             return float(self.lr)
@@ -641,5 +660,3 @@ class LearningRateSchedulerWrapper:
             if name in sig.parameters and value is not None
         }
         return fn(**kwargs)
-    
-    

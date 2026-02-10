@@ -6,9 +6,21 @@ from pyparsing import Iterable, Union
 import io
 import torch
 from wildfire_pyro.environments.base_environment import BaseEnvironment
-from wildfire_pyro.wrappers.components.observation_provider import StudentObservationProvider, TeacherObservationProvider
+from wildfire_pyro.helpers.parameters import (
+    LoggingParameters,
+    ModelParameters,
+    RuntimeParameters,
+)
+from wildfire_pyro.wrappers.components.observation_provider import (
+    StudentObservationProvider,
+    TeacherObservationProvider,
+)
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager
-from wildfire_pyro.wrappers.components import TeacherPredictionProvider, StudentPredictionProvider
+from wildfire_pyro.wrappers.components import (
+    TeacherPredictionProvider,
+    StudentPredictionProvider,
+)
+
 
 class DistillationLearningManager(SupervisedLearningManager):
     """
@@ -24,17 +36,15 @@ class DistillationLearningManager(SupervisedLearningManager):
     - Multiple observation shapes (student vs teacher)
     - Curriculum-style evolution of control over the environment
     """
-    
+
     def __init__(
         self,
         student_nn: torch.nn.Module,
         teacher_nn: torch.nn.Module,
         environment,
-        model_parameters: Dict[str, Any],
-        logging_parameters: Dict[str, Any],
-        runtime_parameters: Dict[str, Any],
-        
-        
+        model_parameters: ModelParameters,
+        logging_parameters: LoggingParameters,
+        runtime_parameters: RuntimeParameters,
     ):
 
         self._verify_environment(environment)
@@ -51,20 +61,28 @@ class DistillationLearningManager(SupervisedLearningManager):
 
     def _verify_environment(self, environment):
         if not hasattr(environment, "teacher_observation_space"):
-            raise ValueError("Environment must have 'teacher_observation_space' attribute for DistillationLearningManager.")
+            raise ValueError(
+                "Environment must have 'teacher_observation_space' attribute for DistillationLearningManager."
+            )
 
         if not hasattr(environment, "student_observation_space"):
-            raise ValueError("Environment must have 'student_observation_space' attribute for DistillationLearningManager.")
+            raise ValueError(
+                "Environment must have 'student_observation_space' attribute for DistillationLearningManager."
+            )
 
-    def _set_neural_network(self, student_nn: torch.nn.Module, teacher_nn: torch.nn.Module,):
+    def _set_neural_network(
+        self,
+        student_nn: torch.nn.Module,
+        teacher_nn: torch.nn.Module,
+    ):
         """
         Sets the neural network for the learning manager.
 
         Args:
             neural_network (torch.nn.Module): The neural network to be set.
         """
-        teacher_observation_space = self.environment.teacher_observation_space # type: ignore #
-        student_observation_space = self.environment.student_observation_space # type: ignore #
+        teacher_observation_space = self.environment.teacher_observation_space  # type: ignore #
+        student_observation_space = self.environment.student_observation_space  # type: ignore #
 
         self.optimizer = torch.optim.Adam(
             student_nn.parameters(),

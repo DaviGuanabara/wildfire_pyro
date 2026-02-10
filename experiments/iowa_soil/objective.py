@@ -3,14 +3,31 @@ import optuna
 import pandas as pd
 from pathlib import Path
 
+from wildfire_pyro.helpers.parameters import ModelParameters, RunParameters
+
 from iowa_experiment import IowaEnvironmentExperiment
 from runtime_config import BASE_RUN_PARAMETERS
+
+
+def _gen_run_parameters(trial: optuna.Trial) -> RunParameters:
+    run_parameters = BASE_RUN_PARAMETERS
+
+    lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
+    hidden = trial.suggest_categorical("hidden", [64, 128, 256, 512, 1024])
+    dropout = trial.suggest_float("dropout", 0.0, 0.5)
+    batch_size = trial.suggest_categorical("batch_size", [128, 256])
+
+    run_parameters.model_parameters = ModelParameters(
+        lr=lr, hidden=hidden, dropout_prob=dropout, batch_size=batch_size
+    )
+
+    return run_parameters
 
 
 def objective(trial: optuna.Trial) -> float:
     start = time.time()
 
-    run_parameters = BASE_RUN_PARAMETERS.with_trial(trial)
+    run_parameters = _gen_run_parameters(trial)
 
     experiment = IowaEnvironmentExperiment(run_parameters)
     _, metrics = experiment.run()

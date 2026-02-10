@@ -73,6 +73,7 @@ class SensorEnvironment(BaseEnvironment):
         """
 
         super().reset(seed=seed)
+        self.sensor_manager.reset(seed=seed)
 
         self.current_step = 0
         observation, self.ground_truth = self._generate_observation()

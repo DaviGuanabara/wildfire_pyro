@@ -26,6 +26,7 @@ class ReplayBuffer:
     def __init__(self, max_size: int, device: str = "cpu"):
         self.device = device
         self.max_size = max_size
+
         self.position = 0
         self.full = False
 
@@ -41,9 +42,9 @@ class ReplayBuffer:
         """
         idx = self.position % self.max_size
 
-        self.observations[idx] = self._to_tensor(obs) #type: ignore
-        self.actions[idx] = self._to_tensor(action) #type: ignore
-        self.targets[idx] = self._to_tensor(target) #type: ignore
+        self.observations[idx] = self._to_tensor(obs)  # type: ignore
+        self.actions[idx] = self._to_tensor(action)  # type: ignore
+        self.targets[idx] = self._to_tensor(target)  # type: ignore
 
         self.position += 1
         if self.position >= self.max_size:
@@ -54,7 +55,12 @@ class ReplayBuffer:
         if buffer_size < batch_size:
             raise ValueError(f"Not enough samples: {buffer_size} < {batch_size}")
 
-        indices = np.random.choice(buffer_size, batch_size, replace=False)
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "[REPLAY BUFFER] Random number generator not initialized. Call reset(seed) before using this method."
+            )
+
+        indices = self.rng.choice(buffer_size, batch_size, replace=False)
 
         obs_batch = [self.observations[i] for i in indices]
         tgt_batch = [self.targets[i] for i in indices]
@@ -65,23 +71,24 @@ class ReplayBuffer:
 
         # 🔹 Se observação for dict
         elif isinstance(obs_batch[0], dict):
-            obs_batch = {k: torch.stack([d[k] for d in obs_batch])
-                        for k in obs_batch[0]}
+            obs_batch = {
+                k: torch.stack([d[k] for d in obs_batch]) for k in obs_batch[0]
+            }
 
         return (
             obs_batch,
             torch.stack(tgt_batch),
         )
 
-
-
-    def reset(self):
+    def reset(self, seed: int):
         """Limpa o buffer."""
         self.position = 0
         self.full = False
         self.observations: List[Optional[torch.Tensor]] = [None] * self.max_size
         self.actions: List[Optional[torch.Tensor]] = [None] * self.max_size
         self.targets: List[Optional[torch.Tensor]] = [None] * self.max_size
+
+        self.rng = np.random.default_rng(seed)
 
     def is_full(self) -> bool:
         return self.full
@@ -92,8 +99,7 @@ class ReplayBuffer:
     def pop_oldest(self):
         """Remove a transição mais antiga."""
         if self.position == 0 and not self.full:
-            raise ValueError(
-                "Buffer is empty. Cannot remove oldest transition.")
+            raise ValueError("Buffer is empty. Cannot remove oldest transition.")
 
         # Desloca elementos (O(n), mas simples)
         self.observations.pop(0)

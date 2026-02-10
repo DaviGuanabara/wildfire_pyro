@@ -4,6 +4,11 @@ from typing import Any, Dict, Optional, Tuple
 
 
 from wildfire_pyro.environments.base_environment import BaseEnvironment
+from wildfire_pyro.helpers.parameters import (
+    LoggingParameters,
+    ModelParameters,
+    RuntimeParameters,
+)
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
 from wildfire_pyro.wrappers.components import predict_model
 
@@ -15,16 +20,19 @@ class SupervisedLearningManager(BaseLearningManager):
     def __init__(
         self,
         environment: BaseEnvironment,
-        logging_parameters:Dict[str, Any],
-        runtime_parameters:Dict[str, Any],
-        model_parameters:Dict[str, Any],
+        logging_parameters: LoggingParameters,
+        runtime_parameters: RuntimeParameters,
+        model_parameters: ModelParameters,
         neural_network: Optional[torch.nn.Module] = None,
     ):
-        
-        
-        super().__init__(environment, neural_network=neural_network, logging_parameters=logging_parameters, runtime_parameters=runtime_parameters,
-                         model_parameters=model_parameters)
 
+        super().__init__(
+            environment,
+            neural_network=neural_network,
+            logging_parameters=logging_parameters,
+            runtime_parameters=runtime_parameters,
+            model_parameters=model_parameters,
+        )
 
     def predict(
         self,
@@ -42,8 +50,7 @@ class SupervisedLearningManager(BaseLearningManager):
             Tuple[np.ndarray, Any]: Predicted action(s) and additional information (empty dict).
         """
 
-        observation_space = cast(
-            spaces.Dict, self.environment.observation_space)
+        observation_space = cast(spaces.Dict, self.environment.observation_space)
         return predict_model(
             self.neural_network,
             obs,
@@ -51,7 +58,6 @@ class SupervisedLearningManager(BaseLearningManager):
             observation_space=observation_space,
         )
 
-    
     def _train(self) -> float:
         """
         Trains the neural network using data from the buffer.
@@ -70,14 +76,13 @@ class SupervisedLearningManager(BaseLearningManager):
 
         observations, targets = self.buffer.sample_batch(self.batch_size)
 
-
         # (batch_size, num_neighbors, feature_dim)
         # observations = observations.to(self.device)
         # (batch_size, num_neighbors, feature_dim)
         if isinstance(observations, dict):
             observations = {k: v.to(self.device) for k, v in observations.items()}
         else:
-            observations = observations.to(self.device) #type: ignore
+            observations = observations.to(self.device)  # type: ignore
 
         # (batch_size, 1)
         targets = targets.to(self.device)
@@ -96,16 +101,16 @@ class SupervisedLearningManager(BaseLearningManager):
         # truth values during the training process.
 
         y_preds = self.neural_network(observations)
-    
+
         if isinstance(y_preds, tuple):
             y_preds = y_preds[0]
-        
+
         loss = self.loss_func(y_preds, targets)
         loss.backward()
         self.optimizer.step()
 
         self.loss: float = loss.item()
-        #print(f"[INFO] Train Loss: {self.loss:.4f}")
+        # print(f"[INFO] Train Loss: {self.loss:.4f}")
 
         self._update_learning_rate()
 

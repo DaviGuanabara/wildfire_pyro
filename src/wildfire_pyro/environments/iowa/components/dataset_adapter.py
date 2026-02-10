@@ -30,8 +30,6 @@ class DatasetAdapter:
 
         self.load_data(self.data_path, scaler=scaler, metadata=metadata)
 
-        # self.reset(rng)
-
     def reset(self, seed: int):
         """Reset the adapter's internal state, including the random seed for reproducibility."""
 

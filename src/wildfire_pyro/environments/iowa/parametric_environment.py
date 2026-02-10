@@ -44,14 +44,17 @@ class ParametricEnvironment(BaseEnvironment):
     def get_fitted_scaler(self) -> CustomScaler:
         return self.dataset_adapter.scaler
 
-    def reset(self, seed: int, options: Optional[Dict[str, Any]] = None):
+    def reset(
+        self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
+    ):
         """
         Reset the environment to an initial state and return the initial observation and info.
         Reset MUST BE CALLED before calling step().
         """
 
-        super().reset(seed=seed)
-        self.dataset_adapter.reset(seed)
+        if seed is not None:
+            self.dataset_adapter.reset(seed)
+            super().reset(seed=seed)
 
         sample, padded, mask, feature_names, ground_truth, terminated = (
             self.dataset_adapter.next()

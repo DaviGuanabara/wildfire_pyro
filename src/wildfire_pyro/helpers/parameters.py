@@ -34,6 +34,17 @@ class ModelParameters:
     hidden: int
     batch_size: int
 
+    @property
+    def rollout_size(self) -> int:
+        # if rollout_size <= 0, it will default to batch_size
+        # TODO: Rethink about rollout_size. Maybe it should be optional and default to batch_size if not provided?
+        # It must always be gratter than batch size
+
+        if self.batch_size <= 0:
+            raise ValueError("[MODEL PARAMETERS] batch_size must be greater than 0")
+
+        return self.batch_size * 2
+
 
 @dataclass(frozen=True)
 class TrainingParameters:
@@ -49,7 +60,7 @@ class TestParameters:
     n_eval: int
 
 
-@dataclass(frozen=True)
+@dataclass
 class RunParameters:
     data_parameters: DataParameters
     runtime_parameters: RuntimeParameters
@@ -57,26 +68,3 @@ class RunParameters:
     model_parameters: ModelParameters
     training_parameters: TrainingParameters
     test_parameters: TestParameters
-
-    def with_trial(self, trial: optuna.Trial) -> "RunParameters":
-        log_dir = f"logs/optuna/trial_{trial.number}"
-
-        # TODO:  trial suggest should not be here.
-        return replace(
-            self,
-            runtime_parameters=replace(
-                self.runtime_parameters,
-                log_dir=log_dir,
-            ),
-            logging_parameters=replace(
-                self.logging_parameters,
-                log_path=log_dir,
-            ),
-            model_parameters=replace(
-                self.model_parameters,
-                lr=trial.suggest_float("lr", 1e-4, 1e-1, log=True),
-                hidden=trial.suggest_categorical("hidden", [64, 128, 256, 512, 1024]),
-                dropout_prob=trial.suggest_float("dropout", 0.0, 0.5),
-                batch_size=trial.suggest_categorical("batch_size", [64, 128, 256]),
-            ),
-        )

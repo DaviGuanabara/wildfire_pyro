@@ -34,7 +34,7 @@ class BaseEnvironment(Env, ABC):
         pass
 
     def reset(
-        self, seed: int, options: Optional[Dict[str, Any]] = None
+        self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[Any, Dict[str, Any]]:
         """
         Default implementation that sets the random seed.
@@ -47,8 +47,10 @@ class BaseEnvironment(Env, ABC):
         Returns:
             Tuple[Any, Dict[str, Any]]: Initial observation and info (empty by default).
         """
-        self.seed = seed
-        self.rng = np.random.default_rng(seed)
+
+        if seed is not None:
+            self.seed = seed
+            self.rng = np.random.default_rng(seed)
 
         return None, {}  # placeholder, subclasses devem sobrescrever
 
