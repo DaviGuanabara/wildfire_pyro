@@ -20,12 +20,19 @@ class ParametricEnvironment(BaseEnvironment):
         data_path,
         metadata: Metadata,
         params: AdapterParams,
+        seed: int,
         baseline_type: str = "mean_neighbor",
         scaler: Optional[CustomScaler] = None,
     ):
+
+        super().__init__(seed=seed)
         self.dataset_metadata: Metadata = metadata
         self.dataset_adapter = DatasetAdapter(
-            data_path=data_path, metadata=metadata, params=params, scaler=scaler
+            data_path=data_path,
+            metadata=metadata,
+            params=params,
+            scaler=scaler,
+            seed=seed,
         )
 
         self.verbose = params.verbose
@@ -41,6 +48,8 @@ class ParametricEnvironment(BaseEnvironment):
 
         self.baseline_type = baseline_type
 
+        self.reset(seed=seed)
+
     def get_fitted_scaler(self) -> CustomScaler:
         return self.dataset_adapter.scaler
 
@@ -53,8 +62,11 @@ class ParametricEnvironment(BaseEnvironment):
         """
 
         if seed is not None:
-            self.dataset_adapter.reset(seed)
             super().reset(seed=seed)
+            self.dataset_adapter.reset(seed=self.seed)
+
+        else:
+            self.dataset_adapter.reset()
 
         sample, padded, mask, feature_names, ground_truth, terminated = (
             self.dataset_adapter.next()

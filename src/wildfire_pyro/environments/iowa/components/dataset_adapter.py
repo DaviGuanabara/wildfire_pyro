@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import os
 import random
 from typing import Hashable, List, Optional, Tuple, Any, cast
@@ -14,6 +15,13 @@ logger = logging.getLogger("SensorManager")
 logger.setLevel(logging.INFO)
 
 
+@dataclass
+class Pivot:
+    unique_time_idx: int
+    in_time_idx: int
+    global_idx: int
+
+
 class DatasetAdapter:
     "A component that maps a dataset to framework’s internal semantic model."
 
@@ -22,6 +30,7 @@ class DatasetAdapter:
         data_path,
         metadata: Metadata,
         params: AdapterParams,
+        seed: int,
         scaler: Optional[CustomScaler] = None,
     ):
         self.data_path = data_path
@@ -29,17 +38,30 @@ class DatasetAdapter:
         self.params = params
 
         self.load_data(self.data_path, scaler=scaler, metadata=metadata)
+        self.reset(seed)
 
-    def reset(self, seed: int):
-        """Reset the adapter's internal state, including the random seed for reproducibility."""
+    def reset(self, seed: Optional[int] = None):
+        """
+        Reset the adapter's internal state, including the random seed for reproducibility.
+        RNG is created only when a new seed is passed.
+        """
 
-        self.rng = np.random.default_rng(seed)
+        if seed is None and not hasattr(self, "rng"):
+            raise ValueError(
+                "[DATASET ADAPTER] RNG not initialized; call reset(seed) first."
+            )
+
+        if seed is not None:
+            self.seed = seed
+            self.rng = np.random.default_rng(seed)
+
         self._set_shapes()
 
         self.unique_times = np.sort(self.data[self.metadata.time].unique())
-        self.cursor = self.rng.integers(
-            int(self.params.max_delta_time),
-            self.unique_times.size - int(self.params.max_delta_time),
+        self.cursor = (
+            self._get_random_cursor_index()
+            if self.params.random_cursor_reposition
+            else int(self.params.max_delta_time)
         )
 
         self.done = False
@@ -192,6 +214,49 @@ class DatasetAdapter:
         idx = self.rng.choice(candidates.index, size=k, replace=True)
         return candidates.loc[idx]
 
+    def _get_random_pivot(self) -> Pivot:
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "Random number generator not initialized. Call reset(seed) before using this method."
+            )
+
+        # Choose Unique Time Index
+        unique_time_idx = int(
+            self.rng.integers(
+                int(self.params.max_delta_time),
+                len(self.unique_times),
+            )
+        )
+
+        # Calculate the time slice once
+        current_time = self.unique_times[unique_time_idx]
+        time_slice = self.data[self.data[self.metadata.time] == current_time]
+
+        # Choose a row within the time slice
+        in_time_idx = int(self.rng.integers(0, len(time_slice)))
+
+        # Derive the global index
+        global_idx = int(time_slice.index[in_time_idx])
+
+        return Pivot(
+            unique_time_idx=unique_time_idx,
+            in_time_idx=in_time_idx,
+            global_idx=global_idx,
+        )
+
+    def _get_random_cursor_index(self) -> int:
+        if not hasattr(self, "rng"):
+            raise ValueError(
+                "Random number generator not initialized. Call reset(seed) before using this method."
+            )
+
+        return int(
+            self.rng.integers(
+                int(self.params.max_delta_time),
+                self.unique_times.size,
+            )
+        )
+
     def get_neighbors(
         self,
         row_index: int,
@@ -296,7 +361,10 @@ class DatasetAdapter:
         ground_truth_shape = (len(self.metadata.target),)
 
         # ⚡ Take a single row to infer the number of features
-        sample = self.data.sample(n=1).iloc[0]
+        # sample = self.data.sample(n=1).iloc[0]
+        idx = self.rng.integers(len(self.data))
+        sample = self.data.iloc[idx]
+
         neighbors = self.get_neighbors(
             row_index=cast(int, sample.name),
             row=sample,
@@ -433,9 +501,7 @@ class DatasetAdapter:
         self, cursor
     ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
         """
-        Return next row with its neighborhood (padded).
-        Iterates sequentially and flags `done=True` when the dataset ends.
-        Normalizes features and targets using the configured scaler.
+        Return the row pointed by the cursor, with its neighborhood, formatted and padded.
         """
 
         if self.scaler is None:
@@ -445,6 +511,7 @@ class DatasetAdapter:
         if self.cursor >= len(self.unique_times) - 1:
             self.done = True
 
+        #
         sample = self._get_sample(cursor)
         row_index = sample.name
 
@@ -468,6 +535,12 @@ class DatasetAdapter:
         return sample, padded, mask, feature_names, ground_truth_scaled, self.done
 
     def read_resample_neighbors(self):
+        """
+        Keep pivot (cursor) in the same position but resample the neighborhood.
+         Useful for bootstrapping.
+         Note: it also re-shuffles the neighborhood, so the order of neighbors is not guaranteed
+         to be the same as in the previous read.
+        """
         if not hasattr(self, "rng"):
             raise ValueError(
                 "Random number generator not initialized. Call reset(seed) before using this method."
@@ -478,12 +551,18 @@ class DatasetAdapter:
         self,
     ) -> Tuple[pd.Series, np.ndarray, np.ndarray, List[str], np.ndarray, bool]:
         """
-        Return next row with its neighborhood (padded).
-        Iterates sequentially and flags `done=True` when the dataset ends.
+        Return next pivot with its neighborhood.
+        Iterates sequentially if flag random_cursor_reposition is set as false, and flags `done=True` when the dataset ends.
         """
 
         reading = self._read(self.cursor)
-        self.cursor += 1  # Só avança depois de ler com sucesso
+
+        # only advances after reading.
+        if self.params.random_cursor_reposition:
+            # Move cursor to a random position within the allowed range for the next read
+            self.cursor = self._get_random_cursor_index()
+        else:
+            self.cursor += 1
         return reading
 
     def last(
@@ -536,11 +615,11 @@ if __name__ == "__main__":
         max_neighborhood_size=4,
         max_delta_distance=1e9,
         max_delta_time=10,
+        random_cursor_reposition=True,
         verbose=True,
     )
 
-    adapter = DatasetAdapter(data_path_windows, metadata, params=params)
-    adapter.reset(seed)
+    adapter = DatasetAdapter(data_path_windows, metadata, params=params, seed=seed)
 
     # Lê uma amostra com vizinhança
     for _i in range(256):

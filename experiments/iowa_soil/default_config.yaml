@@ -4,6 +4,7 @@ data:
   test_path: data/test.csv
 
 logging:
+  log_dir: logs/iowa_soil/optuna/
   format_strings:
     - csv
     - stdout
@@ -38,6 +39,7 @@ runtime:
   GLOBAL_SEED: 123456
   device: mps #cuda, cpu, 
   verbose: false
+  
 
 
 

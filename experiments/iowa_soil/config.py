@@ -40,13 +40,13 @@ def load_full_config(yaml_path: str) -> LoadedConfig:
     runtime = spec["runtime"]
     runtime_parameters = RuntimeParameters(
         GLOBAL_SEED=runtime["GLOBAL_SEED"],
-        log_dir="",
         verbose=runtime["verbose"],
         device=runtime.get("device", "cpu"),
     )
 
     logging_parameters = LoggingParameters(
-        log_path="",
+        log_dir=spec["logging"]["log_dir"],
+        log_folder="",
         format_strings=tuple(spec["logging"]["format_strings"]),
     )
 

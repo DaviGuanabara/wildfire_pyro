@@ -46,9 +46,6 @@ import h5py
 import numpy as np
 
 
-from wildfire_pyro.common.seed_manager import get_seed
-
-
 # TODO:
 # target_extractor=lambda info: info["teacher_output"]["velocity"]
 # Is it interesting to have a target extractor?
@@ -60,6 +57,7 @@ class BaseLearningManager:
         runtime_parameters: RuntimeParameters,
         logging_parameters: LoggingParameters,
         model_parameters: ModelParameters,
+        seed: int,
         neural_network: Optional[torch.nn.Module] = None,
     ):
         """
@@ -67,25 +65,29 @@ class BaseLearningManager:
 
         Args:
             environment (BaseEnvironment): Gymnasium environment instance.
-            runtime_parameters (dict): Runtime configurations (device, seed, verbosity).
-            logging_parameters (dict): Logging configurations (path, format).
-            model_parameters (dict): Model and training hyperparameters.
+            runtime_parameters : Runtime configurations (device, seed, verbosity).
+            logging_parameters : Logging configurations (path, format).
+            model_parameters : Model and training hyperparameters.
             neural_network (torch.nn.Module, optional): Neural network to be trained.
         """
 
         self.environment = environment
-        self.device, self.verbose, self.seed = self._init_runtime(runtime_parameters)
+        self.seed = seed
+
+        self.device, self.verbose = self._init_runtime(runtime_parameters)
         self.log_path, self.format_strings = self._init_logging(logging_parameters)
-        # self.path_to_hdf5 = pathlib.Path(self.log_path, "path_to_hdf5")
+
         self.batch_size, self.rollout_size, self.lr = self._init_model_params(
             model_parameters
         )
 
         # estado inicial do ambiente
-        obs, info = self._reset_environment()
+        obs, info = self.environment.reset()
 
         # inicialização do buffer de replay
-        self.buffer = self._init_replay_buffer(environment)
+        self.buffer = self._init_replay_buffer(
+            environment, self.rollout_size, self.seed, self.device
+        )
 
         # inicialização de atributos básicos
         self._custom_logger = False
@@ -109,13 +111,17 @@ class BaseLearningManager:
     def _init_runtime(self, runtime_parameters: RuntimeParameters):
         device = runtime_parameters.device
         verbose = runtime_parameters.verbose
-        seed = runtime_parameters.GLOBAL_SEED
-        return device, verbose, seed
+        return device, verbose
 
-    def _init_logging(self, logging_parameters: LoggingParameters):
-        log_path = logging_parameters.log_path
+    def _init_logging(
+        self, logging_parameters: LoggingParameters
+    ) -> Tuple[str, tuple[str, ...]]:
+        log_path = (
+            pathlib.Path(logging_parameters.log_dir) / logging_parameters.log_folder
+        )
+
         format_strings = logging_parameters.format_strings
-        return log_path, format_strings
+        return str(log_path), format_strings
 
     def _init_model_params(self, model_parameters: ModelParameters):
         batch_size = model_parameters.batch_size
@@ -123,10 +129,9 @@ class BaseLearningManager:
         lr = model_parameters.lr
         return batch_size, rollout_size, lr
 
-    def _reset_environment(self):
-        return self.environment.reset()
-
-    def _init_replay_buffer(self, environment: BaseEnvironment):
+    def _init_replay_buffer(
+        self, environment: BaseEnvironment, rollout_size: int, seed: int, device
+    ):
         obs_space = environment.observation_space
 
         # Para o genérico, só checamos se é suportado
@@ -136,8 +141,9 @@ class BaseLearningManager:
             raise ValueError(f"Unsupported observation space: {type(obs_space)}")
 
         return ReplayBuffer(
-            max_size=self.batch_size,
-            device=self.device,
+            max_size=rollout_size,  # self.batch_size,
+            device=device,
+            seed=seed,
         )
 
     def _get_action_shape(self, environment: BaseEnvironment):
@@ -257,10 +263,8 @@ class BaseLearningManager:
     # o aluno ou o professor.
 
     def collect_rollouts(
-        self,
-        n_rollout_steps: int,
-        callback: "BaseCallback",
-    ) -> bool:
+        self, n_rollout_steps: int, callback: "BaseCallback", obs, info
+    ) -> Tuple[bool, Any, Any]:
         """
         Collects rollouts from the environment and stores them in the buffer.
 
@@ -270,16 +274,7 @@ class BaseLearningManager:
         """
         callback.on_rollout_start()
 
-        # Ensure we start with a valid observation
-        # obs, info = self.environment.reset(seed=self._generate_rollout_seed())
-
-        obs, info = (
-            self.environment.reset(seed=self._generate_rollout_seed())
-            if "seed" in self.environment.reset.__code__.co_varnames
-            else self.environment.reset()
-        )
-
-        for step in range(n_rollout_steps):
+        for _ in range(n_rollout_steps):
 
             prediction_obs = self.prediction_obs_provider.get_observation(obs, info)
             prediction = self.prediction_provider.get_output(obs=prediction_obs)
@@ -291,21 +286,15 @@ class BaseLearningManager:
                 print(f"[Warning] Missing 'label'. Ending rollout.")
                 break
 
-            # print(f"[Info] Collected rollout step {step + 1}/{n_rollout_steps}.")
-            # print(prediction, label)
-            # print(prediction_obs)
             self.buffer.add(prediction_obs, prediction[0], label[0])
-            # self.save_to_hdf5(self.path_to_hdf5, obs=prediction_obs, action=prediction[0], target=label[0])
 
-            obs, reward, terminated, truncated, info = self.environment.step(
-                prediction[0]
-            )
+            obs, _, terminated, truncated, info = self.environment.step(prediction[0])
             self.num_timesteps += 1
 
             callback.update_locals(locals())
             if not callback.on_step():
                 print("[Info] Callback requested early stopping.")
-                return False
+                return False, obs, info
 
             if terminated or truncated:
                 # DONT CHANGE ENVIRONMET SEED.
@@ -313,10 +302,7 @@ class BaseLearningManager:
                 obs, info = self.environment.reset()
 
         callback.on_rollout_end()
-        return True
-
-    def _generate_rollout_seed(self) -> int:
-        return get_seed(f"rollout_t{self.num_timesteps}")
+        return True, obs, info
 
     def _setup_learn(
         self,
@@ -338,15 +324,8 @@ class BaseLearningManager:
         if reset_num_timesteps:
             self.num_timesteps = 0
             self._episode_num = 0
-            # self._last_obs, self._last_info = self.environment.reset(
-            #    seed=self._generate_rollout_seed()
-            # )
 
-            obs, info = (
-                self.environment.reset(seed=self._generate_rollout_seed())
-                if "seed" in self.environment.reset.__code__.co_varnames
-                else self.environment.reset()
-            )
+            obs, info = self.environment.reset()
 
         else:
             total_timesteps += self.num_timesteps
@@ -362,34 +341,47 @@ class BaseLearningManager:
         callback = self._init_callback(callback, progress_bar)
         return total_timesteps, callback
 
+    def _compute_n_rollout_steps(
+        self, total_timesteps: int, steps_completed: int
+    ) -> int:
+
+        remaining = total_timesteps - steps_completed
+        missing = self.buffer.n_empty_slots()
+        desired = max(missing, self.batch_size)
+
+        return min(desired, remaining)
+
     def learn(self, total_timesteps: int, callback=None, progress_bar: bool = False):
         """
         Main learning loop.
         Alternates between collecting rollouts and training the neural network.
         """
+
         total_timesteps, callback = self._setup_learn(
             total_timesteps, callback=callback, progress_bar=progress_bar
         )
 
         callback.on_training_start(locals(), globals())
 
+        obs, info = self.environment.reset()
         steps_completed = 0
-        while steps_completed < total_timesteps:
-            rollout_steps = min(self.batch_size, total_timesteps - steps_completed)
 
-            continue_training = self.collect_rollouts(
-                n_rollout_steps=rollout_steps, callback=callback
+        while steps_completed < total_timesteps:
+
+            n_rollout_steps = self._compute_n_rollout_steps(
+                total_timesteps, steps_completed
+            )
+
+            continue_training, obs, info = self.collect_rollouts(
+                n_rollout_steps=n_rollout_steps, callback=callback, obs=obs, info=info
             )
 
             if not continue_training:
                 break
 
             loss = self._train()
-            # self.logger.record("train/loss", loss)
-            # self.logger.dump(step=self.num_timesteps)
-            # self.dump_logs(iteration=self.num_timesteps)
 
-            steps_completed += rollout_steps
+            steps_completed += n_rollout_steps
 
         callback.on_training_end()
         return self

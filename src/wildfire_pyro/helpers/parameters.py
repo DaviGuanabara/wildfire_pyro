@@ -16,14 +16,15 @@ class DataParameters:
 @dataclass(frozen=True)
 class RuntimeParameters:
     GLOBAL_SEED: int
-    log_dir: str
+
     verbose: bool
     device: str
 
 
-@dataclass(frozen=True)
+@dataclass
 class LoggingParameters:
-    log_path: str
+    log_dir: str
+    log_folder: str
     format_strings: tuple[str, ...]
 
 

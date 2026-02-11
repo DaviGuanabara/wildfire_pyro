@@ -1,12 +1,14 @@
 import optuna
 from pathlib import Path
 
-from objective import objective  # type: ignore
-from runtime_config import OPTUNA_CONFIG  # type: ignore
+from objective import objective
+from runtime_config import OPTUNA_CONFIG, BASE_RUN_PARAMETERS
 
 
 def run_optuna():
-    storage_path = Path("logs/optuna/study.db")
+
+    log_dir = Path(BASE_RUN_PARAMETERS.logging_parameters.log_dir)
+    storage_path = log_dir / "optuna/study.db"
     storage_path.parent.mkdir(parents=True, exist_ok=True)
 
     study = optuna.create_study(

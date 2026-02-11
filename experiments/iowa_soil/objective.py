@@ -17,6 +17,8 @@ def _gen_run_parameters(trial: optuna.Trial) -> RunParameters:
     dropout = trial.suggest_float("dropout", 0.0, 0.5)
     batch_size = trial.suggest_categorical("batch_size", [128, 256])
 
+    run_parameters.logging_parameters.log_folder = f"trial_{trial.number}"
+
     run_parameters.model_parameters = ModelParameters(
         lr=lr, hidden=hidden, dropout_prob=dropout, batch_size=batch_size
     )
@@ -25,6 +27,7 @@ def _gen_run_parameters(trial: optuna.Trial) -> RunParameters:
 
 
 def objective(trial: optuna.Trial) -> float:
+
     start = time.time()
 
     run_parameters = _gen_run_parameters(trial)
@@ -35,7 +38,8 @@ def objective(trial: optuna.Trial) -> float:
     elapsed = time.time() - start
     trial.set_user_attr("elapsed_time_sec", elapsed)
 
-    path = Path("logs/optuna/results.xlsx")
+    log_dir = Path(BASE_RUN_PARAMETERS.logging_parameters.log_dir)
+    path = log_dir / "optuna/results.xlsx"
     path.parent.mkdir(parents=True, exist_ok=True)
 
     row = {

@@ -12,8 +12,10 @@ class BaseEnvironment(Env, ABC):
     “The environment is responsible for guaranteeing semantic consistency of predictions, ground truth and baseline. The evaluator operates exclusively on validated, scalar targets.”
     """
 
-    def __init__(self):
+    def __init__(self, seed: int):
         self._context_handlers = {}
+        self.seed = seed
+        self.rng = np.random.default_rng(seed)
 
     def render(self, mode: str = "human") -> Any:
         """

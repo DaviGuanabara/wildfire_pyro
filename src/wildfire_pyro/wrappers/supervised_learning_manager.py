@@ -23,6 +23,7 @@ class SupervisedLearningManager(BaseLearningManager):
         logging_parameters: LoggingParameters,
         runtime_parameters: RuntimeParameters,
         model_parameters: ModelParameters,
+        seed: int,
         neural_network: Optional[torch.nn.Module] = None,
     ):
 
@@ -32,6 +33,7 @@ class SupervisedLearningManager(BaseLearningManager):
             logging_parameters=logging_parameters,
             runtime_parameters=runtime_parameters,
             model_parameters=model_parameters,
+            seed=seed,
         )
 
     def predict(
@@ -67,7 +69,7 @@ class SupervisedLearningManager(BaseLearningManager):
         """
 
         self.neural_network.train()
-        buffer_size = self.buffer.size()
+        buffer_size = self.buffer.n_occupied_slots()
         if buffer_size < self.batch_size:
             print("[Warning] Not enough data in buffer to train. Skipping training.")
             return 0.0

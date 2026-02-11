@@ -10,6 +10,7 @@ class IowaEnvironment(ParametricEnvironment):
     def __init__(
         self,
         data_path,
+        seed: int,
         verbose: bool = False,
         baseline_type="mean_neighbor",
         scaler: Optional[CustomScaler] = None,
@@ -24,6 +25,7 @@ class IowaEnvironment(ParametricEnvironment):
             params=params,
             baseline_type=baseline_type,
             scaler=scaler,
+            seed=seed,
         )
 
     def _params(self, verbose: bool) -> AdapterParams:
@@ -31,7 +33,8 @@ class IowaEnvironment(ParametricEnvironment):
             min_neighborhood_size=2,
             max_neighborhood_size=10,
             max_delta_distance=1e9,
-            max_delta_time=10.0,
+            max_delta_time=10.0,  # days
+            random_cursor_reposition=True,
             verbose=verbose,
         )
 
@@ -75,8 +78,9 @@ if __name__ == "__main__":
     data_path_windows = "C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\examples\\iowa_soil\\data\\daily\\processed\\dataset_with_baseline.csv"
     data_path = data_path_windows
     # Instancia o ambiente
-    env = IowaEnvironment(data_path=data_path_windows, verbose=True)
     seed = 42
+    env = IowaEnvironment(data_path=data_path_windows, verbose=True, seed=seed)
+
     # Reset do ambiente
     obs, info = env.reset(seed=seed)
 

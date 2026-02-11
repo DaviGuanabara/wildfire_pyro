@@ -8,6 +8,7 @@ from wildfire_pyro.common.evaluator import BootstrapEvaluator
 from wildfire_pyro.common.messages import EvaluationMetrics
 from wildfire_pyro.common.seed_manager import configure_seed_manager
 from wildfire_pyro.environments.iowa.iowa_environment import IowaEnvironment
+from wildfire_pyro.factories.learner_factory import create_deep_set_learner
 from wildfire_pyro.models.deep_set_attention_net import DeepSetAttentionNet
 from wildfire_pyro.wrappers.supervised_learning_manager import SupervisedLearningManager
 from wildfire_pyro.helpers.parameters import RunParameters
@@ -27,28 +28,23 @@ class IowaEnvironmentExperiment:
         self.train_env = IowaEnvironment(
             data_path=self.config.data_parameters.train_path,
             verbose=self.config.runtime_parameters.verbose,
+            seed=self.seed_manager.get_seed("train_env"),
         )
 
         self.test_env = IowaEnvironment(
             data_path=self.config.data_parameters.test_path,
             scaler=self.train_env.get_fitted_scaler(),
             verbose=self.config.runtime_parameters.verbose,
+            seed=self.seed_manager.get_seed("test_env"),
         )
 
         # Learner
-        net = DeepSetAttentionNet(
-            observation_space=self.train_env.observation_space,
-            action_space=self.train_env.action_space,
-            hidden_dim=self.config.model_parameters.hidden,
-            prob=self.config.model_parameters.dropout_prob,
-        ).to(self.config.runtime_parameters.device)
-
-        self.learner = SupervisedLearningManager(
-            neural_network=net,
-            environment=self.train_env,
+        self.learner = create_deep_set_learner(
+            env=self.train_env,
+            model_parameters=self.config.model_parameters,
             logging_parameters=self.config.logging_parameters,
             runtime_parameters=self.config.runtime_parameters,
-            model_parameters=self.config.model_parameters,
+            seed=self.seed_manager.get_seed("learner"),
         )
 
     def _train(self) -> SupervisedLearningManager:
@@ -59,7 +55,7 @@ class IowaEnvironmentExperiment:
 
         callbacks = CallbackList([train_callback])
 
-        self.train_env.reset(self.seed_manager.get_seed("train"))
+        # self.train_env.reset()
 
         self.learner.learn(
             total_timesteps=self.config.training_parameters.total_timesteps,
@@ -70,7 +66,7 @@ class IowaEnvironmentExperiment:
         return self.learner
 
     def _test(self) -> EvaluationMetrics:
-        self.test_env.reset(self.seed_manager.get_seed("test"))
+        self.test_env.reset()
 
         evaluator = BootstrapEvaluator(
             environment=self.test_env,
@@ -79,7 +75,7 @@ class IowaEnvironmentExperiment:
             n_bootstrap=self.config.test_parameters.n_bootstrap,
         )
 
-        return evaluator.evaluate(self.seed_manager.get_seed("bootstrap_evaluator"))
+        return evaluator.evaluate(self.seed_manager.get_seed("evaluator"))
 
     def teardown(self):
         self.train_env.close()

@@ -45,6 +45,7 @@ class DistillationLearningManager(SupervisedLearningManager):
         model_parameters: ModelParameters,
         logging_parameters: LoggingParameters,
         runtime_parameters: RuntimeParameters,
+        seed: int,
     ):
 
         self._verify_environment(environment)
@@ -55,6 +56,7 @@ class DistillationLearningManager(SupervisedLearningManager):
             logging_parameters=logging_parameters,
             runtime_parameters=runtime_parameters,
             model_parameters=model_parameters,
+            seed=seed,
         )
 
         self._set_neural_network(student_nn, teacher_nn)

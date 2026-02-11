@@ -3,6 +3,11 @@ import numpy as np
 
 from wildfire_pyro.common.messages import EvaluationMetrics
 from wildfire_pyro.environments.base_environment import BaseEnvironment
+from wildfire_pyro.helpers.parameters import (
+    LoggingParameters,
+    ModelParameters,
+    RuntimeParameters,
+)
 from wildfire_pyro.wrappers.base_learning_manager import BaseLearningManager
 
 
@@ -37,7 +42,7 @@ class BootstrapEvaluator:
         This uncertainty is quantified via a local bootstrap, estimating the
         conditional error distribution:
 
-            |Ŷ − Y| | Target
+            |Ŷ - Y| | Target
 
     (2) Population-level variability:
         Different pivots correspond to different prediction tasks with varying
@@ -221,7 +226,7 @@ class BootstrapEvaluator:
         expected error.
         """
 
-        self.env.reset(seed)
+        self.env.reset(seed)  # Ensure environment is seeded for reproducibility
 
         model_maes = []
         baseline_maes = []
@@ -293,33 +298,35 @@ if __name__ == "__main__":
 
     configure_seed_manager(GLOBAL_SEED)
 
-    model_parameters = {
-        "lr": 0.001,
-        "dropout_prob": 0.2,
-        "hidden": 64,
-        "batch_size": 256,
-    }
+    model_parameters = ModelParameters(
+        lr=0.001,
+        dropout_prob=0.2,
+        hidden=64,
+        batch_size=256,
+    )
 
-    logging_parameters = {
-        "log_path": "/",
-        "format_strings": ["csv", "tensorboard", "stdout"],
-    }
+    logging_parameters = LoggingParameters(
+        log_dir="/",
+        log_folder="/",
+        format_strings=("csv", "tensorboard", "stdout"),
+    )
 
-    runtime_parameters = {
-        "device": "cuda",
-        "seed": 42,
-        "verbose": True,
-    }
+    runtime_parameters = RuntimeParameters(
+        device="cuda",
+        GLOBAL_SEED=GLOBAL_SEED,
+        verbose=True,
+    )
 
     # -----------------------------
     # Build environment & learner
     # -----------------------------
     env = IowaEnvironment(
-        data_path="C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\experiments\\iowa_soil\\data\\test.csv"
+        data_path="C:\\Users\\davi_\\Documents\\GitHub\\wildfire_workspace\\wildfire\\experiments\\iowa_soil\\data\\test.csv",
+        seed=GLOBAL_SEED,
     )
 
     learner = create_deep_set_learner(
-        env, model_parameters, logging_parameters, runtime_parameters
+        env, model_parameters, logging_parameters, runtime_parameters, seed=GLOBAL_SEED
     )
 
     evaluator = BootstrapEvaluator(
