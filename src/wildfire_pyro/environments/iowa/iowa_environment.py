@@ -13,11 +13,12 @@ class IowaEnvironment(ParametricEnvironment):
         seed: int,
         verbose: bool = False,
         baseline_type="mean_neighbor",
+        pivot_next_random: bool = True,
         scaler: Optional[CustomScaler] = None,
     ):
 
         metadata = self._metadata()
-        params = self._params(verbose)
+        params = self._params(verbose, pivot_next_random)
 
         super().__init__(
             data_path=data_path,
@@ -28,13 +29,13 @@ class IowaEnvironment(ParametricEnvironment):
             seed=seed,
         )
 
-    def _params(self, verbose: bool) -> AdapterParams:
+    def _params(self, verbose: bool, pivot_next_random: bool) -> AdapterParams:
         return AdapterParams(
             min_neighborhood_size=2,
             max_neighborhood_size=10,
             max_delta_distance=1e9,
             max_delta_time=10.0,  # days
-            random_cursor_reposition=True,
+            pivot_next_random=pivot_next_random,
             verbose=verbose,
         )
 

@@ -185,9 +185,6 @@ class ParametricEnvironment(BaseEnvironment):
             gt_list.append(ground_truth.astype(np.float32))
             baseline_list.append(self.dataset_adapter.get_baseline().astype(np.float32))
 
-            if terminated:
-                break
-
         observations = {
             "neighbors": np.stack(obs_neighbors, axis=0),
             "mask": np.stack(obs_masks, axis=0),

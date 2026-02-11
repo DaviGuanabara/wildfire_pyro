@@ -1,3 +1,4 @@
+from copy import deepcopy
 import time
 import optuna
 import pandas as pd
@@ -10,12 +11,12 @@ from runtime_config import BASE_RUN_PARAMETERS
 
 
 def _gen_run_parameters(trial: optuna.Trial) -> RunParameters:
-    run_parameters = BASE_RUN_PARAMETERS
+    run_parameters = deepcopy(BASE_RUN_PARAMETERS)
 
-    lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
-    hidden = trial.suggest_categorical("hidden", [64, 128, 256, 512, 1024])
-    dropout = trial.suggest_float("dropout", 0.0, 0.5)
-    batch_size = trial.suggest_categorical("batch_size", [128, 256])
+    lr = trial.suggest_categorical("lr", [1e-4, 3e-4, 1e-3, 3e-3, 1e-2])
+    hidden = trial.suggest_categorical("hidden", [64, 128, 256, 512])
+    dropout = trial.suggest_categorical("dropout", [0.0, 0.1, 0.2, 0.3, 0.4])
+    batch_size = trial.suggest_categorical("batch_size", [64, 128, 256, 512])
 
     run_parameters.logging_parameters.log_folder = f"trial_{trial.number}"
 

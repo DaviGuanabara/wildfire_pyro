@@ -256,7 +256,10 @@ class BootstrapEvaluator:
 
             wins.append(win)
 
-            self.env.step()
+            observation, reward, terminated, truncated, info = self.env.step()
+
+            if terminated or truncated:
+                self.env.reset()
 
         model_maes = np.asarray(model_maes)
         baseline_maes = np.asarray(baseline_maes)

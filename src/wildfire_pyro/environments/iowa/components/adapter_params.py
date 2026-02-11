@@ -7,5 +7,5 @@ class AdapterParams:
     max_neighborhood_size: int
     max_delta_distance: float
     max_delta_time: float
-    random_cursor_reposition: bool
+    pivot_next_random: bool
     verbose: bool

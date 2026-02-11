@@ -11,20 +11,20 @@ logging:
     - tensorboard
 
 optuna:
-  n_trials: 10
+  n_trials: 20
   study_name: iowa_soil_optuna
   n_jobs: 1
   direction: minimize
 
 training:
-  total_timesteps: 200000
+  total_timesteps: 50000
   use_validation: false
   eval_freq: null
   log_frequency: 5000
 
 evaluation:
 
-  n_eval: 20
+  n_eval: 100
   # Number of evaluation pivots (distinct targets).
   # Each pivot corresponds to a different underlying ground-truth sample.
   # Controls population-level robustness.
@@ -36,7 +36,7 @@ evaluation:
   # Controls estimation of model uncertainty conditioned on the same target.
 
 runtime:
-  GLOBAL_SEED: 123456
+  GLOBAL_SEED: 42
   device: mps #cuda, cpu, 
   verbose: false
   
